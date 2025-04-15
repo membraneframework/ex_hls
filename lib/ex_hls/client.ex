@@ -121,6 +121,7 @@ defmodule ExHLS.Client do
   end
 
   defp download_chunk(state) do
+    IO.inspect("NOW")
     case List.pop_at(state.media_playlist.timeline, 0) do
       {nil, []} ->
         state = put_in(state.demuxer, Demuxer.end_of_stream(state.demuxer))
