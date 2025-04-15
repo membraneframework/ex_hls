@@ -96,7 +96,7 @@ defmodule ExHLS.Client do
   defp do_read_frame(state, track) do
     stream_ids = resolve_stream_ids(state.demuxer)
 
-    case Demuxer.take(state.demuxer, stream_ids[:video]) do
+    case Demuxer.take(state.demuxer, stream_ids[track]) do
       {[], demuxer} ->
         case put_in(state.demuxer, demuxer) |> download_chunk() do
           {:ok, state} -> do_read_frame(state, track)
