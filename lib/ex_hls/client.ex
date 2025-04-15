@@ -9,6 +9,8 @@ defmodule ExHLS.Client do
   @type frame :: any()
   @opaque client :: pid()
 
+  @h264_time_base 90_000
+
   def start(url) do
     GenServer.start(__MODULE__, url: url)
   end
@@ -101,9 +103,11 @@ defmodule ExHLS.Client do
           {:end_of_stream, state} -> {:end_of_stream, state}
         end
 
-      {[video_frame], demuxer} ->
+      {[pes], demuxer} ->
         state = put_in(state.demuxer, demuxer)
-        {video_frame, state}
+        frame = %ExHLS.Frame{payload: pes.data, pts: convert_h264_ts(pes.pts), dts: convert_h264_ts(pes.dts),
+          discontinuity: pes.discontinuity, is_aligned: pes.is_aligned}
+        {frame, state}
     end
   end
 
@@ -150,5 +154,12 @@ defmodule ExHLS.Client do
       _error ->
         %{}
     end
+  end
+
+  defp convert_h264_ts(nil), do: nil
+
+  defp convert_h264_ts(ts) do
+    (ts * ExHLS.Frame.time_base() / @h264_time_base)
+    |> trunc()
   end
 end
