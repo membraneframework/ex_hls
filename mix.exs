@@ -1,8 +1,8 @@
-defmodule Membrane.Template.Mixfile do
+defmodule ExHLS.Mixfile do
   use Mix.Project
 
   @version "0.1.0"
-  @github_url "https://github.com/membraneframework/membrane_template_plugin"
+  @github_url "https://github.com/membraneframework-labs/ex_hls"
 
   def project do
     [
@@ -15,11 +15,11 @@ defmodule Membrane.Template.Mixfile do
       dialyzer: dialyzer(),
 
       # hex
-      description: "Template Plugin for Membrane Framework",
+      description: "Elixir package for handling HLS streams",
       package: package(),
 
       # docs
-      name: "Membrane Template plugin",
+      name: "ExHLS",
       source_url: @github_url,
       docs: docs(),
       homepage_url: "https://membrane.stream"
@@ -37,7 +37,11 @@ defmodule Membrane.Template.Mixfile do
 
   defp deps do
     [
-      {:membrane_core, "~> 1.0"},
+      {:ex_m3u8, "~> 0.15.1"},
+      {:req, "~> 0.5.10"},
+      {:membrane_mp4_plugin, "~> 0.35.2"},
+      {:membrane_h26x_plugin, "~> 0.10.2"},
+      {:mpeg_ts, github: "kim-company/kim_mpeg_ts"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
