@@ -105,8 +105,18 @@ defmodule ExHLS.Client do
 
       {[pes], demuxer} ->
         state = put_in(state.demuxer, demuxer)
-        frame = %ExHLS.Frame{payload: pes.data, pts: convert_h264_ts(pes.pts), dts: convert_h264_ts(pes.dts),
-          discontinuity: pes.discontinuity, is_aligned: pes.is_aligned}
+
+        frame = %ExHLS.Frame{
+          payload: pes.data,
+          pts: convert_h264_ts(pes.pts),
+          dts: convert_h264_ts(pes.dts),
+          track_id: stream_ids[track],
+          metadata: %{
+            discontinuity: pes.discontinuity,
+            is_aligned: pes.is_aligned
+          }
+        }
+
         {frame, state}
     end
   end
