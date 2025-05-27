@@ -37,6 +37,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   # todo: kontunuuj tutaj :)
   # milego dnia
 
+  # albo moze lepiej maksymalnie uproscic kod tutaj, dostawic api behavioura do kimowego demuxera i dopasowac CMAFa?
+
   # defp maybe_resolve_tracks_info(%__MODULE__{tracks_info: nil} = demuxing_engine) do
   #   tracks_info = Demuxer.get_tracks_info(demuxing_engine.demuxer)
   #   %{demuxing_engine | tracks_info: tracks_info}
