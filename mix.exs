@@ -39,6 +39,7 @@ defmodule ExHLS.Mixfile do
     [
       {:ex_m3u8, "~> 0.15.1"},
       {:req, "~> 0.5.10"},
+      {:qex, "~> 0.5.1"},
       # {:membrane_mp4_plugin, "~> 0.35.2"},
       {:membrane_mp4_plugin, path: "../membrane_mp4_plugin"},
       {:membrane_h26x_plugin, "~> 0.10.2"},

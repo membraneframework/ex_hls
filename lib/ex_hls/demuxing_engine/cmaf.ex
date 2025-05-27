@@ -7,33 +7,83 @@ defmodule ExHLS.DemuxingEngine.CMAF do
 
   @behaviour ExHLS.DemuxingEngine
 
-  @impl true
-  defdelegate new(), to: CMAF.Engine
+  @enforce_keys [:demuxer]
+  defstruct @enforce_keys ++ [tracks_to_frames: %{}]
 
-  @impl true
-  defdelegate feed!(demuxer, binary), to: CMAF.Engine
-
-  @impl true
-  defdelegate get_tracks_info(demuxer), to: CMAF.Engine
-
-  @impl true
-  def pop_frames(demuxer) do
-    {:ok, cmaf_samples, demuxer} = CMAF.Engine.pop_samples(demuxer)
-
-    frames =
-      cmaf_samples
-      |> Enum.map(fn %CMAF.Engine.Sample{} = sample ->
-        %ExHLS.Frame{
-          payload: sample.payload,
-          pts: sample.pts,
-          dts: sample.dts,
-          track_id: sample.track_id
+  @type t :: %__MODULE__{
+          demuxer: CMAF.Engine.t(),
+          tracks_to_frames: map()
         }
-      end)
 
-    {:ok, frames, demuxer}
+  @impl true
+  def new() do
+    %__MODULE__{
+      demuxer: CMAF.Engine.new()
+    }
   end
 
   @impl true
-  def end_stream(demuxer), do: {:ok, demuxer}
+  def feed!(%__MODULE__{} = demuxing_engine, binary) do
+    {:ok, samples, demuxer} =
+      demuxing_engine.demuxer
+      |> CMAF.Engine.feed!(binary)
+      |> CMAF.Engine.pop_samples()
+
+    new_tracks_to_frames =
+      samples
+      |> Enum.group_by(
+        fn sample -> sample.track_id end,
+        fn %CMAF.Engine.Sample{} = sample ->
+          %ExHLS.Frame{
+            payload: sample.payload,
+            pts: sample.pts,
+            dts: sample.dts,
+            track_id: sample.track_id
+          }
+        end
+      )
+
+    tracks =
+      (Map.keys(new_tracks_to_frames) ++ Map.keys(demuxing_engine.tracks_to_frames))
+      |> Enum.uniq()
+
+    tracks_to_frames =
+      tracks
+      |> Enum.reduce(demuxing_engine.tracks_to_frames, fn track_id, tracks_to_frames ->
+        tracks_to_frames |> Map.put_new_lazy(track_id, &Qex.new/0)
+      end)
+
+    tracks_to_frames =
+      new_tracks_to_frames
+      |> Enum.reduce(tracks_to_frames, fn {track_id, frames}, tracks_to_frames ->
+        tracks_to_frames
+        |> Map.update!(track_id, fn track_qex ->
+          Enum.reduce(frames, track_qex, &Qex.push(&2, &1))
+        end)
+      end)
+
+    %__MODULE__{demuxing_engine | demuxer: demuxer, tracks_to_frames: tracks_to_frames}
+  end
+
+  @impl true
+  @spec get_tracks_info(any()) ::
+          {:error, :not_available_yet} | {:ok, %{optional(integer()) => struct()}}
+  def get_tracks_info(demuxing_engine) do
+    CMAF.Engine.get_tracks_info(demuxing_engine.demuxer)
+  end
+
+  @impl true
+  def pop_frame(demuxing_engine, track_id) do
+    case Qex.pop(demuxing_engine.tracks_to_frames[track_id]) do
+      {{:value, frame}, track_qex} ->
+        demuxing_engine = put_in(demuxing_engine.tracks_to_frames[track_id], track_qex)
+        {:ok, frame, demuxing_engine}
+
+      {:empty, _track_qex} ->
+        {:error, :empty_demuxing_engine}
+    end
+  end
+
+  @impl true
+  def end_stream(demuxing_engine), do: {:ok, demuxing_engine}
 end
