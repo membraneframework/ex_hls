@@ -35,7 +35,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   # todo: kontunuuj tutaj :)
-  # milego dnia
 
   # albo moze lepiej maksymalnie uproscic kod tutaj, dostawic api behavioura do kimowego demuxera i dopasowac CMAFa?
 
