@@ -43,22 +43,13 @@ defmodule ExHLS.DemuxingEngine.CMAF do
         end
       )
 
-    tracks =
-      (Map.keys(new_tracks_to_frames) ++ Map.keys(demuxing_engine.tracks_to_frames))
-      |> Enum.uniq()
-
-    tracks_to_frames =
-      tracks
-      |> Enum.reduce(demuxing_engine.tracks_to_frames, fn track_id, tracks_to_frames ->
-        tracks_to_frames |> Map.put_new_lazy(track_id, &Qex.new/0)
-      end)
-
     tracks_to_frames =
       new_tracks_to_frames
-      |> Enum.reduce(tracks_to_frames, fn {track_id, frames}, tracks_to_frames ->
+      |> Enum.reduce(demuxing_engine.tracks_to_frames, fn {track_id, frames}, tracks_to_frames ->
         tracks_to_frames
+        |> Map.put_new_lazy(track_id, &Qex.new/0)
         |> Map.update!(track_id, fn track_qex ->
-          Enum.reduce(frames, track_qex, &Qex.push(&2, &1))
+          frames |> Enum.reduce(track_qex, &Qex.push(&2, &1))
         end)
       end)
 
@@ -80,7 +71,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
         {:ok, frame, demuxing_engine}
 
       {:empty, _track_qex} ->
-        {:error, :empty_demuxing_engine}
+        {:error, :empty_track_data}
     end
   end
 

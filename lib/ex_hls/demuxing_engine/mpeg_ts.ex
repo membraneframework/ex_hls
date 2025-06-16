@@ -7,39 +7,60 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @behaviour ExHLS.DemuxingEngine
 
-  @enforce_keys [:demuxer, :tracks_info]
+  @enforce_keys [:demuxer]
   defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          demuxer: Demuxer.t()
+        }
 
   @impl true
   def new() do
-    %__MODULE__{
-      demuxer: Demuxer.new(),
-      tracks_info: nil
-    }
+    %__MODULE__{demuxer: Demuxer.new()}
   end
 
   @impl true
   def feed!(%__MODULE__{} = demuxing_engine, binary) do
-    demuxer = Demuxer.push_buffer(demuxing_engine.demuxer, binary)
-    %{demuxing_engine | demuxer: demuxer}
+    demuxing_engine
+    |> Map.update!(:demuxer, &Demuxer.push_buffer(&1, binary))
   end
 
   @impl true
   def get_tracks_info(%__MODULE__{} = demuxing_engine) do
-    demuxing_engine = maybe_resolve_tracks_info(demuxing_engine)
-
-    case demuxing_engine.tracks_info do
+    case demuxing_engine.demuxer.pmt do
       nil -> {:error, :tracks_info_not_available}
-      tracks_info -> {:ok, tracks_info}
+      pmt -> {:ok, pmt}
     end
   end
 
-  # todo: kontunuuj tutaj :)
+  @impl true
+  def pop_frame(%__MODULE__{} = demuxing_engine, track_id) do
+    case Demuxer.take(demuxing_engine.demuxer, track_id) do
+      {[packet], demuxer} ->
+        frame = %ExHLS.Frame{
+          payload: packet.data,
+          pts: packet.pts |> nanos_to_millis(),
+          dts: packet.dts |> nanos_to_millis(),
+          track_id: track_id,
+          metadata: %{
+            discontinuity: packet.discontinuity,
+            is_aligned: packet.is_aligned
+          }
+        }
 
-  # albo moze lepiej maksymalnie uproscic kod tutaj, dostawic api behavioura do kimowego demuxera i dopasowac CMAFa?
+        {:ok, frame, %{demuxing_engine | demuxer: demuxer}}
 
-  # defp maybe_resolve_tracks_info(%__MODULE__{tracks_info: nil} = demuxing_engine) do
-  #   tracks_info = Demuxer.get_tracks_info(demuxing_engine.demuxer)
-  #   %{demuxing_engine | tracks_info: tracks_info}
-  # end
+      {[], _demuxer} ->
+        {:error, :empty_track_data}
+    end
+  end
+
+  defp nanos_to_millis(nanos) when is_integer(nanos) do
+    div(nanos, 1_0000_000_000)
+  end
+
+  @impl true
+  def end_stream(%__MODULE__{} = demuxing_engine) do
+    {:ok, %{demuxing_engine | demuxer: Demuxer.end_of_stream(demuxing_engine.demuxer)}}
+  end
 end
