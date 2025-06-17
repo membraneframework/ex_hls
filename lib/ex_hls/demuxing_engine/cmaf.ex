@@ -71,7 +71,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
         {:ok, frame, demuxing_engine}
 
       {:empty, _track_qex} ->
-        {:error, :empty_track_data}
+        {:error, :empty_track_data, demuxing_engine}
     end
   end
 

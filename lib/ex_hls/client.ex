@@ -3,7 +3,8 @@ defmodule ExHLS.Client do
 
   use GenServer
 
-  alias MPEG.TS.Demuxer
+  alias ExHLS.DemuxingEngine
+  alias Membrane.{AAC, H264, RemoteStream}
 
   @type state :: map()
   @type frame :: any()
@@ -11,19 +12,21 @@ defmodule ExHLS.Client do
 
   @h264_time_base 90_000
 
-  def start(url) do
-    GenServer.start(__MODULE__, url: url)
+  def start(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
+    GenServer.start(__MODULE__, url: url, demuxing_engine_impl: demuxing_engine_impl)
   end
 
   @impl true
-  def init(url: url) do
+  def init(url: url, demuxing_engine_impl: demuxing_engine_impl) do
     playlist_content = Req.get!(url).body
 
     state = %{
       multivariant_playlist: ExM3U8.deserialize_multivariant_playlist!(playlist_content, []),
       base_url: Path.dirname(url),
       audio_frames: [],
-      video_frames: []
+      video_frames: [],
+      demuxing_engine_impl: demuxing_engine_impl,
+      demuxing_engine: demuxing_engine_impl.new()
     }
 
     {:ok, state}
@@ -52,25 +55,13 @@ defmodule ExHLS.Client do
     media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
     state = Map.put(state, :media_base_url, media_base_url)
 
-    demuxer = Demuxer.new()
-    # we need to explicitly override that `waiting_random_access_indicator` as otherwise Demuxer
-    # discards all the input data
-    # TODO - figure out how to do it properly
-    demuxer = %{demuxer | waiting_random_access_indicator: false}
-    state = Map.put(state, :demuxer, demuxer)
-
     {:reply, :ok, state}
   end
 
   @impl true
-  def handle_call(:read_video_frame, _from, state) do
-    {result, state} = do_read_frame(state, :video)
-    {:reply, result, state}
-  end
-
-  @impl true
-  def handle_call(:read_audio_frame, _from, state) do
-    {result, state} = do_read_frame(state, :audio)
+  def handle_call({:read_frame, media_type}, _from, state) do
+    track_id = get_track_id(state, media_type)
+    {result, state} = do_read_frame(state, track_id)
     {:reply, result, state}
   end
 
@@ -85,38 +76,28 @@ defmodule ExHLS.Client do
   end
 
   def read_video_frame(pid) do
-    GenServer.call(pid, :read_video_frame)
+    GenServer.call(pid, {:read_frame, :video})
   end
 
   def read_audio_frame(pid) do
-    GenServer.call(pid, :read_audio_frame)
+    GenServer.call(pid, {:read_frame, :audio})
   end
 
-  @spec do_read_frame(state(), :audio | :video) :: {frame() | :end_of_stream, state()}
-  defp do_read_frame(state, track) do
-    stream_ids = resolve_stream_ids(state.demuxer)
+  @spec do_read_frame(state(), integer()) :: {frame() | :end_of_stream, state()}
+  defp do_read_frame(state, track_id) do
+    impl = state.demuxing_engine_impl
 
-    case Demuxer.take(state.demuxer, stream_ids[track]) do
-      {[], demuxer} ->
-        case put_in(state.demuxer, demuxer) |> download_chunk() do
-          {:ok, state} -> do_read_frame(state, track)
+    case state.demuxing_engine |> impl.pop_frame(track_id) do
+      {:error, :empty_track_data, demuxing_engine} ->
+        %{state | demuxing_engine: demuxing_engine}
+        |> download_chunk()
+        |> case do
+          {:ok, state} -> do_read_frame(state, track_id)
           {:end_of_stream, state} -> {:end_of_stream, state}
         end
 
-      {[pes], demuxer} ->
-        state = put_in(state.demuxer, demuxer)
-
-        frame = %ExHLS.Frame{
-          payload: pes.data,
-          pts: convert_h264_ts(pes.pts),
-          dts: convert_h264_ts(pes.dts),
-          track_id: stream_ids[track],
-          metadata: %{
-            discontinuity: pes.discontinuity,
-            is_aligned: pes.is_aligned
-          }
-        }
-
+      {:ok, frame, demuxing_engine} ->
+        state = %{state | demuxing_engine: demuxing_engine}
         {frame, state}
     end
   end
@@ -131,38 +112,47 @@ defmodule ExHLS.Client do
   end
 
   defp download_chunk(state) do
+    impl = state.demuxing_engine_impl
+
     case List.pop_at(state.media_playlist.timeline, 0) do
       {nil, []} ->
-        state = put_in(state.demuxer, Demuxer.end_of_stream(state.demuxer))
+        state = state |> Map.update!(:demuxing_engine, &impl.end_stream/1)
         {:end_of_stream, state}
 
       {segment_info, rest} ->
-        state = put_in(state.media_playlist.timeline, rest)
-
-        demuxer =
+        request_result =
           Path.join(state.media_base_url, segment_info.uri)
           |> Req.get!()
-          |> then(&Demuxer.push_buffer(state.demuxer, &1.body))
 
-        state = put_in(state.demuxer, demuxer)
+        demuxing_engine = state.demuxing_engine |> impl.feed!(request_result.body)
+
+        state =
+          %{
+            state
+            | demuxing_engine: demuxing_engine,
+              media_playlist: %{state.media_playlist | timeline: rest}
+          }
+
+        # |> put_in([:media_playlist, :timeline], rest)
+
         {:ok, state}
     end
   end
 
-  defp resolve_stream_ids(demuxer) do
-    with {:ok, pmt} when pmt != nil <- Map.fetch(demuxer, :pmt),
-         {:ok, streams} <- Map.fetch(pmt, :streams) do
-      Enum.map(streams, fn
-        {id, %{stream_type: :AAC}} ->
-          {:audio, id}
+  defp get_track_id(state, type) when type in [:audio, :video] do
+    impl = state.demuxing_engine_impl
 
-        {id, %{stream_type: :H264}} ->
-          {:video, id}
+    with {:ok, tracks_info} <- state.demuxing_engine |> impl.get_tracks_info() do
+      tracks_info
+      |> Enum.find_value(fn
+        {id, %AAC{}} when type == :audio -> id
+        {id, %RemoteStream{content_format: AAC}} when type == :audio -> id
+        {id, %H264{}} when type == :video -> id
+        {id, %RemoteStream{content_format: H264}} when type == :video -> id
+        _different_type -> nil
       end)
-      |> Map.new()
     else
-      _error ->
-        %{}
+      {:error, _reason} -> nil
     end
   end
 
