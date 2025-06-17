@@ -10,7 +10,7 @@ defmodule ExHLS.Client do
   @type frame :: any()
   @opaque client :: pid()
 
-  @h264_time_base 90_000
+  # @h264_time_base 90_000
 
   def start(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
     GenServer.start(__MODULE__, url: url, demuxing_engine_impl: demuxing_engine_impl)
@@ -60,8 +60,7 @@ defmodule ExHLS.Client do
 
   @impl true
   def handle_call({:read_frame, media_type}, _from, state) do
-    track_id = get_track_id(state, media_type)
-    {result, state} = do_read_frame(state, track_id)
+    {result, state} = do_read_frame(state, media_type)
     {:reply, result, state}
   end
 
@@ -83,16 +82,17 @@ defmodule ExHLS.Client do
     GenServer.call(pid, {:read_frame, :audio})
   end
 
-  @spec do_read_frame(state(), integer()) :: {frame() | :end_of_stream, state()}
-  defp do_read_frame(state, track_id) do
+  @spec do_read_frame(state(), :audio | :video) :: {frame() | :end_of_stream, state()}
+  defp do_read_frame(state, media_type) do
     impl = state.demuxing_engine_impl
+    track_id = get_track_id(state, media_type)
 
     case state.demuxing_engine |> impl.pop_frame(track_id) do
       {:error, :empty_track_data, demuxing_engine} ->
         %{state | demuxing_engine: demuxing_engine}
         |> download_chunk()
         |> case do
-          {:ok, state} -> do_read_frame(state, track_id)
+          {:ok, state} -> do_read_frame(state, media_type)
           {:end_of_stream, state} -> {:end_of_stream, state}
         end
 
@@ -133,8 +133,6 @@ defmodule ExHLS.Client do
               media_playlist: %{state.media_playlist | timeline: rest}
           }
 
-        # |> put_in([:media_playlist, :timeline], rest)
-
         {:ok, state}
     end
   end
@@ -156,10 +154,10 @@ defmodule ExHLS.Client do
     end
   end
 
-  defp convert_h264_ts(nil), do: nil
+  # defp convert_h264_ts(nil), do: nil
 
-  defp convert_h264_ts(ts) do
-    (ts * ExHLS.Frame.time_base() / @h264_time_base)
-    |> trunc()
-  end
+  # defp convert_h264_ts(ts) do
+  #   (ts * ExHLS.Frame.time_base() / @h264_time_base)
+  #   |> trunc()
+  # end
 end

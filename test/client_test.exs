@@ -7,12 +7,12 @@ defmodule Client.Test do
     {:ok, client} = Client.start(url)
     Client.read_variants(client)
     Client.choose_variant(client, "720")
-    pes = Client.read_video_frame(client)
-    assert pes.pts == 10033
-    assert pes.dts == 10000
-    assert byte_size(pes.data) == 1048
+    frame = Client.read_video_frame(client)
+    assert frame.pts == 10033
+    assert frame.dts == 10000
+    assert byte_size(frame.payload) == 1048
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16, 0,
-             0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1>> <> _rest = pes.data
+             0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1>> <> _rest = frame.payload
   end
 end

@@ -87,11 +87,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         :H264 -> {:ok, :video}
       end
     else
-      _else -> :error
+      _other -> :error
     end
   end
 
   defp packet_ts_to_millis(ts, :video) when is_integer(ts), do: div(ts, 90)
+  # todo: find out how to handle audio timestamps properly
   defp packet_ts_to_millis(ts, :audio) when is_integer(ts), do: ts
 
   @impl true
