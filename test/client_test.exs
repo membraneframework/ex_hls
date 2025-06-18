@@ -4,7 +4,8 @@ defmodule Client.Test do
   alias ExHLS.Client
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-  @fmp4_url "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"
+  # @fmp4_url "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"
+  @fmp4_path "/Users/feliks/membrane/ex_hls/fixture/output.m3u8"
 
   describe "if client reads first video and audio frames of the HLS" do
     test "(MPEGTS) stream" do
@@ -34,7 +35,7 @@ defmodule Client.Test do
     end
 
     test "(fMP4) stream" do
-      {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
+      {:ok, client} = Client.start(@fmp4_path, ExHLS.DemuxingEngine.CMAF)
       Client.read_variants(client)
       Client.choose_variant(client, "720")
 
