@@ -65,13 +65,16 @@ defmodule ExHLS.DemuxingEngine.CMAF do
 
   @impl true
   def pop_frame(demuxing_engine, track_id) do
-    case Qex.pop(demuxing_engine.tracks_to_frames[track_id]) do
-      {{:value, frame}, track_qex} ->
-        demuxing_engine = put_in(demuxing_engine.tracks_to_frames[track_id], track_qex)
-        {:ok, frame, demuxing_engine}
+    # demuxing_engine |> dbg()
+    # track_id |> dbg()
 
-      {:empty, _track_qex} ->
-        {:error, :empty_track_data, demuxing_engine}
+    with qex when qex != nil <- demuxing_engine.tracks_to_frames[track_id],
+         {{:value, frame}, popped_qex} <- Qex.pop(qex) do
+      demuxing_engine = put_in(demuxing_engine.tracks_to_frames[track_id], popped_qex)
+      {:ok, frame, demuxing_engine}
+    else
+      nil -> {:error, :unknown_track, demuxing_engine}
+      {:empty, _qex} -> {:error, :empty_track_data, demuxing_engine}
     end
   end
 

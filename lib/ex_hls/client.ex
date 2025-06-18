@@ -21,6 +21,8 @@ defmodule ExHLS.Client do
     playlist_content = Req.get!(url).body
 
     state = %{
+      media_playlist: nil,
+      media_base_url: nil,
       multivariant_playlist: ExM3U8.deserialize_multivariant_playlist!(playlist_content, []),
       base_url: Path.dirname(url),
       audio_frames: [],
@@ -34,26 +36,35 @@ defmodule ExHLS.Client do
 
   @impl true
   def handle_call(:read_variants, _from, state) do
+    # state |> dbg()
+
     variants =
       state.multivariant_playlist.items
-      |> Enum.map(fn variant -> {variant.name, variant_description(variant)} end)
-      |> Map.new()
+      |> Map.new(fn variant -> {variant.name, variant_description(variant)} end)
 
     {:reply, variants, state}
   end
 
   @impl true
   def handle_call({:choose_variant, variant_name}, _from, state) do
+    # todo: jak w read frame media_playlist jest nilem, to je ustaw jakos
+    # jak nie pojdzie to powiedz lukaszowi zeby ci pomogl
+
     chosen_variant =
       Enum.find(state.multivariant_playlist.items, fn variant -> variant.name == variant_name end)
 
-    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!()
+    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!() |> dbg()
 
-    state =
-      Map.put(state, :media_playlist, ExM3U8.deserialize_media_playlist!(media_playlist.body, []))
+    deserialized_media_playlist =
+      ExM3U8.deserialize_media_playlist!(media_playlist.body, []) |> dbg()
 
     media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
-    state = Map.put(state, :media_base_url, media_base_url)
+
+    state = %{
+      state
+      | media_playlist: deserialized_media_playlist,
+        media_base_url: media_base_url
+    }
 
     {:reply, :ok, state}
   end
@@ -62,6 +73,29 @@ defmodule ExHLS.Client do
   def handle_call({:read_frame, media_type}, _from, state) do
     {result, state} = do_read_frame(state, media_type)
     {:reply, result, state}
+  end
+
+  defp read_media_playlist_without_variant(state) do
+    case state.media_playlist do
+      nil ->
+        media_playlist =
+          state.base_url
+          |> Path.join("output.m3u8")
+          |> Req.get!()
+          |> dbg()
+
+        deserialized_media_playlist =
+          ExM3U8.deserialize_media_playlist!(media_playlist.body, []) |> dbg()
+
+        %{
+          state
+          | media_playlist: deserialized_media_playlist,
+            media_base_url: state.base_url
+        }
+
+      _media_playlist ->
+        state
+    end
   end
 
   @spec read_variants(client()) :: map()
@@ -84,11 +118,13 @@ defmodule ExHLS.Client do
 
   @spec do_read_frame(state(), :audio | :video) :: {frame() | :end_of_stream, state()}
   defp do_read_frame(state, media_type) do
+    state = read_media_playlist_without_variant(state)
+
     impl = state.demuxing_engine_impl
     track_id = get_track_id(state, media_type)
 
     case state.demuxing_engine |> impl.pop_frame(track_id) do
-      {:error, :empty_track_data, demuxing_engine} ->
+      {:error, _reason, demuxing_engine} ->
         %{state | demuxing_engine: demuxing_engine}
         |> download_chunk()
         |> case do
