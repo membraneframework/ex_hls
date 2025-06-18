@@ -93,9 +93,10 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   defp packet_ts_to_millis(ts, :video) when is_integer(ts), do: div(ts, 90)
   # todo: find out how to handle audio timestamps properly
-  defp packet_ts_to_millis(ts, :audio) when is_integer(ts), do: ts
+  defp packet_ts_to_millis(ts, :audio) when is_integer(ts), do: div(ts, 90)
 
   @impl true
+  @spec end_stream(ExHLS.DemuxingEngine.MPEGTS.t()) :: {:ok, ExHLS.DemuxingEngine.MPEGTS.t()}
   def end_stream(%__MODULE__{} = demuxing_engine) do
     {:ok, %{demuxing_engine | demuxer: Demuxer.end_of_stream(demuxing_engine.demuxer)}}
   end
