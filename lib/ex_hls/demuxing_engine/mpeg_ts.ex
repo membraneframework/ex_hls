@@ -44,6 +44,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               :H264 -> Membrane.H264
             end
 
+          # todo: maybe change remote stream on exact stream format
           {id, %Membrane.RemoteStream{content_format: content_format}}
         end)
 
@@ -55,13 +56,11 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def pop_frame(%__MODULE__{} = demuxing_engine, track_id) do
-    with {:ok, media_type} <- track_media_type(demuxing_engine, track_id),
-         {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
+    with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       frame = %ExHLS.Frame{
         payload: packet.data,
-        # 90 works if h264
-        pts: packet.pts |> packet_ts_to_millis(media_type),
-        dts: packet.dts |> packet_ts_to_millis(media_type),
+        pts: packet.pts |> packet_ts_to_millis(),
+        dts: packet.dts |> packet_ts_to_millis(),
         track_id: track_id,
         metadata: %{
           discontinuity: packet.discontinuity,
@@ -71,29 +70,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
       {:ok, frame, %{demuxing_engine | demuxer: demuxer}}
     else
-      :error ->
-        {:error, :empty_track_data, demuxing_engine}
-
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
     end
   end
 
-  defp track_media_type(demuxing_engine, track_id) do
-    with %{streams: streams} <- demuxing_engine.demuxer.pmt,
-         {:ok, %{stream_type: stream_type}} <- Map.fetch(streams, track_id) do
-      case stream_type do
-        :AAC -> {:ok, :audio}
-        :H264 -> {:ok, :video}
-      end
-    else
-      _other -> :error
-    end
-  end
-
-  defp packet_ts_to_millis(ts, :video) when is_integer(ts), do: div(ts, 90)
-  # todo: find out how to handle audio timestamps properly
-  defp packet_ts_to_millis(ts, :audio) when is_integer(ts), do: div(ts, 90)
+  defp packet_ts_to_millis(ts), do: div(ts, 90)
 
   @impl true
   @spec end_stream(ExHLS.DemuxingEngine.MPEGTS.t()) :: {:ok, ExHLS.DemuxingEngine.MPEGTS.t()}

@@ -1,8 +1,9 @@
 defmodule ExHLS.Frame do
+  @moduledoc """
+  A struct representing a media frame in the ExHLS demuxing engine.
+  """
   @enforce_keys [:payload, :pts, :dts, :track_id]
   defstruct @enforce_keys ++ [metadata: %{}]
-  # discontinuity, :is_aligned
-
 
   @type t :: %__MODULE__{
           payload: binary(),
@@ -12,7 +13,8 @@ defmodule ExHLS.Frame do
           metadata: map()
         }
 
-  @time_base 1000 # timestamps need to be represented in milliseconds
+  # timestamps need to be represented in milliseconds
+  @time_base 1000
 
   def time_base(), do: @time_base
 end

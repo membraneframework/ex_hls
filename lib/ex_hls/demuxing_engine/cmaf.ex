@@ -1,8 +1,5 @@
 defmodule ExHLS.DemuxingEngine.CMAF do
-  @moduledoc """
-  todo: here
-  """
-
+  @moduledoc false
   alias Membrane.MP4.Demuxer.CMAF
 
   @behaviour ExHLS.DemuxingEngine

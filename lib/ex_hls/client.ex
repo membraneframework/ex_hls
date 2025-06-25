@@ -1,5 +1,8 @@
 defmodule ExHLS.Client do
-  @moduledoc "HLS Client"
+  @moduledoc """
+  Module providing functionality to demux HLS streams.
+  It allows reading frames from the stream, choosing variants, and managing media playlists.
+  """
 
   use GenServer
 
@@ -10,8 +13,20 @@ defmodule ExHLS.Client do
   @type frame :: any()
   @opaque client :: pid()
 
-  # @h264_time_base 90_000
+  @type variant_description :: %{
+          framerate: integer() | nil,
+          resolution: {integer() | integer()} | nil,
+          codecs: String.t() | nil,
+          bandwidth: integer() | nil
+        }
 
+  @doc """
+  Starts the ExHLS client with the given URL and demuxing engine implementation.
+
+  By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
+  """
+  @spec start(String.t(), DemuxingEngine.MPEGTS | DemuxingEngine.CMAF) ::
+          {:ok, client()} | {:error, term()}
   def start(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
     GenServer.start(__MODULE__, url: url, demuxing_engine_impl: demuxing_engine_impl)
   end
@@ -104,7 +119,7 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_variants(client()) :: map()
+  @spec read_variants(client()) :: %{optional(String.t()) => variant_description()}
   def read_variants(pid) do
     GenServer.call(pid, :read_variants)
   end
@@ -114,10 +129,12 @@ defmodule ExHLS.Client do
     GenServer.call(pid, {:choose_variant, variant_name})
   end
 
+  @spec read_video_frame(client()) :: frame() | :end_of_stream
   def read_video_frame(pid) do
     GenServer.call(pid, {:read_frame, :video})
   end
 
+  @spec read_audio_frame(client()) :: frame() | :end_of_stream
   def read_audio_frame(pid) do
     GenServer.call(pid, {:read_frame, :audio})
   end
@@ -195,11 +212,4 @@ defmodule ExHLS.Client do
       {:error, _reason} -> nil
     end
   end
-
-  # defp convert_h264_ts(nil), do: nil
-
-  # defp convert_h264_ts(ts) do
-  #   (ts * ExHLS.Frame.time_base() / @h264_time_base)
-  #   |> trunc()
-  # end
 end

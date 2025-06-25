@@ -1,2 +1,0 @@
-defmodule ExHLS do
-end
