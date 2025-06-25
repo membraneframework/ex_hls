@@ -7,7 +7,6 @@ defmodule Client.Test do
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
 
   describe "if client reads video and audio frames of the HLS" do
-    @tag :a
     test "(MPEGTS) stream" do
       {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
       assert %{"720" => _variant} = Client.read_variants(client)
@@ -15,8 +14,7 @@ defmodule Client.Test do
 
       video_frame = Client.read_video_frame(client)
 
-      assert video_frame.pts == 10033
-      assert video_frame.dts == 10000
+      assert %{pts: 10033, dts: 10000} = video_frame
       assert byte_size(video_frame.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
@@ -25,8 +23,7 @@ defmodule Client.Test do
 
       audio_frame = Client.read_audio_frame(client)
 
-      assert audio_frame.pts == 10010
-      assert audio_frame.dts == 10010
+      assert %{pts: 10010, dts: 10010} = audio_frame
       assert byte_size(audio_frame.payload) == 6154
 
       assert <<255, 241, 80, 128, 4, 63, 252, 222, 4, 0, 0, 108, 105, 98, 102, 97, 97, 99, 32, 49,
@@ -34,7 +31,6 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_frame.payload
     end
 
-    @tag :b
     test "(fMP4) stream" do
       {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
       assert Client.read_variants(client) == %{}
