@@ -48,6 +48,7 @@ defmodule Client.Test do
                54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_frame.payload
 
       first_audio_frame = Client.read_audio_frame(client)
+
       assert %{pts: 0, dts: 0} = first_audio_frame
 
       assert first_audio_frame.payload ==
@@ -55,6 +56,7 @@ defmodule Client.Test do
                  56>>
 
       second_audio_frame = Client.read_audio_frame(client)
+
       assert %{pts: 23, dts: 23} = second_audio_frame
       assert second_audio_frame.payload == <<33, 16, 4, 96, 140, 28>>
     end
