@@ -5,6 +5,7 @@ defmodule Client.Test do
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
+  @another_fmp4_url "https://test-streams.mux.dev/tos_ismc/main.m3u8"
 
   # todo: write test for fixture from the issue description
 
@@ -57,6 +58,13 @@ defmodule Client.Test do
 
       assert %{pts: 23, dts: 23} = second_audio_frame
       assert second_audio_frame.payload == <<33, 16, 4, 96, 140, 28>>
+    end
+
+    # todo: debug why this test fails
+    @tag :a
+    test "another fMP4" do
+      {:ok, client} = Client.start(@another_fmp4_url, ExHLS.DemuxingEngine.CMAF)
+      assert Client.read_variants(client) |> dbg()
     end
   end
 end
