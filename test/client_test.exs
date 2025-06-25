@@ -4,16 +4,14 @@ defmodule Client.Test do
   alias ExHLS.Client
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-  # @fmp4_url "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"
-  # @fmp4_path "/Users/feliks/membrane/ex_hls/fixture/output.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
 
   describe "if client reads first video and audio frames of the HLS" do
     @tag :a
     test "(MPEGTS) stream" do
       {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
-      Client.read_variants(client) |> dbg()
-      # Client.choose_variant(client, "720")
+      Client.read_variants(client)
+      Client.choose_variant(client, "720")
 
       video_frame = Client.read_video_frame(client)
 
