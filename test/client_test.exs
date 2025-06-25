@@ -13,7 +13,7 @@ defmodule Client.Test do
     test "(MPEGTS) stream" do
       {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
       Client.read_variants(client) |> dbg()
-      Client.choose_variant(client, "720")
+      # Client.choose_variant(client, "720")
 
       video_frame = Client.read_video_frame(client)
 
@@ -39,32 +39,26 @@ defmodule Client.Test do
     @tag :b
     test "(fMP4) stream" do
       {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
-      Client.read_variants(client) |> dbg()
-      # Client.choose_variant(client, "720")
 
       video_frame = Client.read_video_frame(client)
-      video_frame |> dbg()
 
-      # assert video_frame.pts == 10033
-      # assert video_frame.dts == 10000
-      # assert byte_size(video_frame.payload) == 1048
+      assert %{pts: 0, dts: 0} = video_frame
+      assert byte_size(video_frame.payload) == 775
 
-      assert <<0, 0, 0, 1, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72, 183, 150, 44,
+      assert <<0, 0, 2, 171, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72, 183, 150, 44,
                216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114, 101, 32, 49,
                54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_frame.payload
 
-      audio_frame = Client.read_audio_frame(client)
-      audio_frame |> dbg()
+      first_audio_frame = Client.read_audio_frame(client)
+      assert %{pts: 0, dts: 0} = first_audio_frame
 
-      # audio_frame = Client.read_audio_frame(client)
+      assert first_audio_frame.payload ==
+               <<220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49, 48, 48, 0, 66, 32, 8, 193, 24,
+                 56>>
 
-      # assert audio_frame.pts == 10010
-      # assert audio_frame.dts == 10010
-      # assert byte_size(audio_frame.payload) == 6154
-
-      assert <<255, 241, 80, 128, 3, 159, 252, 220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49,
-               48, 48, 0, 66, 32, 8, 193, 24, 56, 255, 241, 80, 128, 1, 191, 252, 33, 16, 4, 96,
-               140, 28, 255, 241, 80, 128, 1, 191, 252, 33, 16>> <> _rest = audio_frame.payload
+      second_audio_frame = Client.read_audio_frame(client)
+      assert %{pts: 23, dts: 23} = second_audio_frame
+      assert second_audio_frame.payload == <<33, 16, 4, 96, 140, 28>>
     end
   end
 end

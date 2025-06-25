@@ -36,8 +36,6 @@ defmodule ExHLS.Client do
 
   @impl true
   def handle_call(:read_variants, _from, state) do
-    # state |> dbg()
-
     variants =
       state.multivariant_playlist.items
       |> Map.new(fn variant -> {variant.name, variant_description(variant)} end)
@@ -53,10 +51,10 @@ defmodule ExHLS.Client do
     chosen_variant =
       Enum.find(state.multivariant_playlist.items, fn variant -> variant.name == variant_name end)
 
-    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!() |> dbg()
+    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!()
 
     deserialized_media_playlist =
-      ExM3U8.deserialize_media_playlist!(media_playlist.body, []) |> dbg()
+      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
 
     media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
 
@@ -82,10 +80,9 @@ defmodule ExHLS.Client do
           state.base_url
           |> Path.join("output.m3u8")
           |> Req.get!()
-          |> dbg()
 
         deserialized_media_playlist =
-          ExM3U8.deserialize_media_playlist!(media_playlist.body, []) |> dbg()
+          ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
 
         %{
           state

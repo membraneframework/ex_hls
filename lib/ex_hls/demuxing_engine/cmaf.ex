@@ -65,9 +65,6 @@ defmodule ExHLS.DemuxingEngine.CMAF do
 
   @impl true
   def pop_frame(demuxing_engine, track_id) do
-    # demuxing_engine |> dbg()
-    # track_id |> dbg()
-
     with qex when qex != nil <- demuxing_engine.tracks_to_frames[track_id],
          {{:value, frame}, popped_qex} <- Qex.pop(qex) do
       demuxing_engine = put_in(demuxing_engine.tracks_to_frames[track_id], popped_qex)
