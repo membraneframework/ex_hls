@@ -45,9 +45,6 @@ defmodule ExHLS.Client do
 
   @impl true
   def handle_call({:choose_variant, variant_name}, _from, state) do
-    # todo: jak w read frame media_playlist jest nilem, to je ustaw jakos
-    # jak nie pojdzie to powiedz lukaszowi zeby ci pomogl
-
     chosen_variant =
       Enum.find(state.multivariant_playlist.items, fn variant -> variant.name == variant_name end)
 
@@ -73,26 +70,38 @@ defmodule ExHLS.Client do
     {:reply, result, state}
   end
 
-  defp read_media_playlist_without_variant(state) do
-    case state.media_playlist do
-      nil ->
-        media_playlist =
-          state.base_url
-          |> Path.join("output.m3u8")
-          |> Req.get!()
-
-        deserialized_media_playlist =
-          ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
-
-        %{
-          state
-          | media_playlist: deserialized_media_playlist,
-            media_base_url: state.base_url
-        }
-
-      _media_playlist ->
+  defp ensure_media_playlist_loaded(state) do
+    cond do
+      state.media_playlist != nil ->
         state
+
+      state.multivariant_playlist.items != [] ->
+        raise """
+        If there are available variants, you have to choose one of them using `choose_variant/2` function \
+        before reading frames. \
+        Available variants: #{state.multivariant_playlist.items |> Enum.map(& &1.name) |> inspect(limit: :infinity)}. \
+        You can get more info using `read_variants/1` function.
+        """
+
+      true ->
+        read_media_playlist_without_variant(state)
     end
+  end
+
+  defp read_media_playlist_without_variant(%{media_playlist: nil} = state) do
+    media_playlist =
+      state.base_url
+      |> Path.join("output.m3u8")
+      |> Req.get!()
+
+    deserialized_media_playlist =
+      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
+
+    %{
+      state
+      | media_playlist: deserialized_media_playlist,
+        media_base_url: state.base_url
+    }
   end
 
   @spec read_variants(client()) :: map()
@@ -115,7 +124,7 @@ defmodule ExHLS.Client do
 
   @spec do_read_frame(state(), :audio | :video) :: {frame() | :end_of_stream, state()}
   defp do_read_frame(state, media_type) do
-    state = read_media_playlist_without_variant(state)
+    state = ensure_media_playlist_loaded(state)
 
     impl = state.demuxing_engine_impl
     track_id = get_track_id(state, media_type)

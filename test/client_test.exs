@@ -10,7 +10,7 @@ defmodule Client.Test do
     @tag :a
     test "(MPEGTS) stream" do
       {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
-      Client.read_variants(client)
+      assert %{"720" => _variant} = Client.read_variants(client)
       Client.choose_variant(client, "720")
 
       video_frame = Client.read_video_frame(client)
@@ -37,7 +37,7 @@ defmodule Client.Test do
     @tag :b
     test "(fMP4) stream" do
       {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
-
+      assert Client.read_variants(client) == %{}
       video_frame = Client.read_video_frame(client)
 
       assert %{pts: 0, dts: 0} = video_frame
