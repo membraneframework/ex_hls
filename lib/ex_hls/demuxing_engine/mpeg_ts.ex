@@ -1,7 +1,5 @@
 defmodule ExHLS.DemuxingEngine.MPEGTS do
-  @moduledoc """
-  todo: here
-  """
+  @moduledoc false
 
   alias MPEG.TS.Demuxer
 
