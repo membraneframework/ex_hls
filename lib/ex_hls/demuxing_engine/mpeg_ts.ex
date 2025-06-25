@@ -42,7 +42,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               :H264 -> Membrane.H264
             end
 
-          # todo: maybe change remote stream on exact stream format
+          # todo: maybe change remote stream on HLS and AAC structs
           {id, %Membrane.RemoteStream{content_format: content_format}}
         end)
 
