@@ -61,9 +61,17 @@ defmodule ExHLS.Client do
 
   defp get_variants_map(state) do
     state.multivariant_playlist.items
-    |> Enum.filter(&match?(%ExM3U8.Tags.Stream{}, &1))
+    |> Enum.flat_map(fn
+      %ExM3U8.Tags.Stream{} = variant -> [variant_description(variant)]
+      _other_tag -> []
+    end)
     |> Enum.with_index(fn variant, index -> {index, variant} end)
     |> Map.new()
+  end
+
+  defp variant_description(%ExM3U8.Tags.Stream{} = variant) do
+    variant
+    |> Map.take([:frame_rate, :resolution, :codecs, :bandwidth, :uri])
   end
 
   defp handle_choose_variant(variant_id, state) do
@@ -90,12 +98,13 @@ defmodule ExHLS.Client do
   end
 
   defp ensure_media_playlist_loaded(state) do
-    case get_variants_map(state) do
-      variants when variants == %{} ->
+    get_variants_map(state)
+    |> Map.to_list()
+    |> case do
+      [] ->
         read_media_playlist_without_variant(state)
 
-      variants when map_size(variants) == 1 ->
-        [{variant_id, _variant}] = variants |> Map.to_list()
+      [{variant_id, _variant}] ->
         handle_choose_variant(variant_id, state)
 
       _many_variants ->
