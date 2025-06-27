@@ -10,9 +10,10 @@ defmodule Client.Test do
   # todo: write test for fixture from the issue description
 
   describe "if client reads video and audio frames of the HLS" do
+    @tag :a
     test "(MPEGTS) stream" do
       {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
-      assert %{"720" => _variant} = Client.read_variants(client)
+      assert %{"720" => _variant} = Client.read_variants(client) |> dbg()
       Client.choose_variant(client, "720")
 
       video_frame = Client.read_video_frame(client)
@@ -34,6 +35,7 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_frame.payload
     end
 
+    @tag :b
     test "(fMP4) stream" do
       {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
       assert Client.read_variants(client) == %{}
@@ -60,9 +62,10 @@ defmodule Client.Test do
       assert second_audio_frame.payload == <<33, 16, 4, 96, 140, 28>>
     end
 
-    # todo: debug why this test fails
-    @tag :a
+    @tag :c
     test "another fMP4" do
+      fmp4_manifest = "/Users/feliks/Downloads/main(1).m3u8"
+      # {:ok, client} = Client.start(fmp4_manifest, ExHLS.DemuxingEngine.CMAF)
       {:ok, client} = Client.start(@another_fmp4_url, ExHLS.DemuxingEngine.CMAF)
       assert Client.read_variants(client) |> dbg()
     end

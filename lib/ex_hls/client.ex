@@ -13,13 +13,6 @@ defmodule ExHLS.Client do
   @type frame :: any()
   @opaque client :: pid()
 
-  @type variant_description :: %{
-          framerate: integer() | nil,
-          resolution: {integer() | integer()} | nil,
-          codecs: String.t() | nil,
-          bandwidth: integer() | nil
-        }
-
   @doc """
   Starts the ExHLS client with the given URL and demuxing engine implementation.
 
@@ -51,31 +44,12 @@ defmodule ExHLS.Client do
 
   @impl true
   def handle_call(:read_variants, _from, state) do
-    variants =
-      state.multivariant_playlist.items
-      |> Map.new(fn variant -> {variant.name, variant_description(variant)} end)
-
-    {:reply, variants, state}
+    {:reply, get_variants_map(state), state}
   end
 
   @impl true
-  def handle_call({:choose_variant, variant_name}, _from, state) do
-    chosen_variant =
-      Enum.find(state.multivariant_playlist.items, fn variant -> variant.name == variant_name end)
-
-    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!()
-
-    deserialized_media_playlist =
-      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
-
-    media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
-
-    state = %{
-      state
-      | media_playlist: deserialized_media_playlist,
-        media_base_url: media_base_url
-    }
-
+  def handle_call({:choose_variant, variant_id}, _from, state) do
+    state = handle_choose_variant(variant_id, state)
     {:reply, :ok, state}
   end
 
@@ -85,21 +59,52 @@ defmodule ExHLS.Client do
     {:reply, result, state}
   end
 
-  defp ensure_media_playlist_loaded(state) do
-    cond do
-      state.media_playlist != nil ->
-        state
+  defp get_variants_map(state) do
+    state.multivariant_playlist.items
+    |> Enum.filter(&match?(%ExM3U8.Tags.Stream{}, &1))
+    |> Enum.with_index(fn variant, index -> {index, variant} end)
+    |> Map.new()
+  end
 
-      state.multivariant_playlist.items != [] ->
+  defp handle_choose_variant(variant_id, state) do
+    chosen_variant =
+      get_variants_map(state)
+      |> Map.fetch!(variant_id)
+
+    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!()
+
+    deserialized_media_playlist =
+      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
+
+    media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
+
+    %{
+      state
+      | media_playlist: deserialized_media_playlist,
+        media_base_url: media_base_url
+    }
+  end
+
+  defp ensure_media_playlist_loaded(%{media_playlist: nil} = state) do
+    state
+  end
+
+  defp ensure_media_playlist_loaded(state) do
+    case get_variants_map(state) do
+      variants when variants == %{} ->
+        read_media_playlist_without_variant(state)
+
+      variants when map_size(variants) == 1 ->
+        [{variant_id, _variant}] = variants |> Map.to_list()
+        handle_choose_variant(variant_id, state)
+
+      _many_variants ->
         raise """
         If there are available variants, you have to choose one of them using `choose_variant/2` function \
         before reading frames. \
         Available variants: #{state.multivariant_playlist.items |> Enum.map(& &1.name) |> inspect(limit: :infinity)}. \
         You can get more info using `read_variants/1` function.
         """
-
-      true ->
-        read_media_playlist_without_variant(state)
     end
   end
 
@@ -119,7 +124,7 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_variants(client()) :: %{optional(String.t()) => variant_description()}
+  @spec read_variants(client()) :: %{optional(String.t()) => struct()}
   def read_variants(pid) do
     GenServer.call(pid, :read_variants)
   end
@@ -159,15 +164,6 @@ defmodule ExHLS.Client do
         state = %{state | demuxing_engine: demuxing_engine}
         {frame, state}
     end
-  end
-
-  defp variant_description(variant) do
-    %{
-      framerate: variant.frame_rate,
-      resolution: variant.resolution,
-      codecs: variant.codecs,
-      bandwidth: variant.bandwidth
-    }
   end
 
   defp download_chunk(state) do
