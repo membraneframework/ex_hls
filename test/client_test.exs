@@ -5,18 +5,22 @@ defmodule Client.Test do
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
-  @another_fmp4_url "https://test-streams.mux.dev/tos_ismc/main.m3u8"
-
-  # todo: write test for fixture from the issue description
-
   describe "if client reads video and audio frames of the HLS" do
     @tag :a
     test "(MPEGTS) stream" do
-      {:ok, client} = Client.start(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
-      assert %{"720" => _variant} = Client.read_variants(client) |> dbg()
-      Client.choose_variant(client, "720")
+      client = Client.new(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
 
-      video_frame = Client.read_video_frame(client)
+      variant_720 =
+        Client.get_variants(client)
+        |> Map.values()
+        |> Enum.find(&(&1.resolution == {1280, 720}))
+
+      assert variant_720 != nil
+
+      {video_frame, client} =
+        client
+        |> Client.choose_variant(variant_720.id)
+        |> Client.read_video_frame()
 
       assert %{pts: 10033, dts: 10000} = video_frame
       assert byte_size(video_frame.payload) == 1048
@@ -25,7 +29,7 @@ defmodule Client.Test do
                0, 0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0,
                1>> <> _rest = video_frame.payload
 
-      audio_frame = Client.read_audio_frame(client)
+      {audio_frame, _client} = Client.read_audio_frame(client)
 
       assert %{pts: 10010, dts: 10010} = audio_frame
       assert byte_size(audio_frame.payload) == 6154
@@ -37,9 +41,9 @@ defmodule Client.Test do
 
     @tag :b
     test "(fMP4) stream" do
-      {:ok, client} = Client.start(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
-      assert Client.read_variants(client) == %{}
-      video_frame = Client.read_video_frame(client)
+      client = Client.new(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
+      assert Client.get_variants(client) == %{}
+      {video_frame, client} = Client.read_video_frame(client)
 
       assert %{pts: 0, dts: 0} = video_frame
       assert byte_size(video_frame.payload) == 775
@@ -48,7 +52,7 @@ defmodule Client.Test do
                216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114, 101, 32, 49,
                54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_frame.payload
 
-      first_audio_frame = Client.read_audio_frame(client)
+      {first_audio_frame, client} = Client.read_audio_frame(client)
 
       assert %{pts: 0, dts: 0} = first_audio_frame
 
@@ -56,18 +60,10 @@ defmodule Client.Test do
                <<220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49, 48, 48, 0, 66, 32, 8, 193, 24,
                  56>>
 
-      second_audio_frame = Client.read_audio_frame(client)
+      {second_audio_frame, _client} = Client.read_audio_frame(client)
 
       assert %{pts: 23, dts: 23} = second_audio_frame
       assert second_audio_frame.payload == <<33, 16, 4, 96, 140, 28>>
-    end
-
-    @tag :c
-    test "another fMP4" do
-      fmp4_manifest = "/Users/feliks/Downloads/main(1).m3u8"
-      # {:ok, client} = Client.start(fmp4_manifest, ExHLS.DemuxingEngine.CMAF)
-      {:ok, client} = Client.start(@another_fmp4_url, ExHLS.DemuxingEngine.CMAF)
-      assert Client.read_variants(client) |> dbg()
     end
   end
 end

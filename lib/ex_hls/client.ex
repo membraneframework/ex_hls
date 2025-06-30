@@ -4,122 +4,70 @@ defmodule ExHLS.Client do
   It allows reading frames from the stream, choosing variants, and managing media playlists.
   """
 
-  use GenServer
-
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
-  @type state :: map()
+  @opaque client :: map()
   @type frame :: any()
-  @opaque client :: pid()
+
+  @type variant_description :: %{
+          id: integer(),
+          name: String.t() | nil,
+          frame_rate: number() | nil,
+          resolution: {integer(), integer()} | nil,
+          codecs: String.t() | nil,
+          bandwidth: integer() | nil,
+          uri: String.t() | nil
+        }
 
   @doc """
   Starts the ExHLS client with the given URL and demuxing engine implementation.
 
   By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
   """
-  @spec start(String.t(), DemuxingEngine.MPEGTS | DemuxingEngine.CMAF) ::
-          {:ok, client()} | {:error, term()}
-  def start(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
-    GenServer.start(__MODULE__, url: url, demuxing_engine_impl: demuxing_engine_impl)
-  end
 
-  @impl true
-  def init(url: url, demuxing_engine_impl: demuxing_engine_impl) do
-    playlist_content = Req.get!(url).body
+  @spec new(String.t(), DemuxingEngine.MPEGTS | DemuxingEngine.CMAF) :: client()
+  def new(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
+    multivariant_playlist =
+      Req.get!(url).body
+      |> ExM3U8.deserialize_multivariant_playlist!([])
 
-    state = %{
+    %{
       media_playlist: nil,
       media_base_url: nil,
-      multivariant_playlist: ExM3U8.deserialize_multivariant_playlist!(playlist_content, []),
+      multivariant_playlist: multivariant_playlist,
       base_url: Path.dirname(url),
       audio_frames: [],
       video_frames: [],
       demuxing_engine_impl: demuxing_engine_impl,
       demuxing_engine: demuxing_engine_impl.new()
     }
-
-    {:ok, state}
   end
 
-  @impl true
-  def handle_call(:read_variants, _from, state) do
-    {:reply, get_variants_map(state), state}
-  end
-
-  @impl true
-  def handle_call({:choose_variant, variant_id}, _from, state) do
-    state = handle_choose_variant(variant_id, state)
-    {:reply, :ok, state}
-  end
-
-  @impl true
-  def handle_call({:read_frame, media_type}, _from, state) do
-    {result, state} = do_read_frame(state, media_type)
-    {:reply, result, state}
-  end
-
-  defp get_variants_map(state) do
-    state.multivariant_playlist.items
-    |> Enum.flat_map(fn
-      %ExM3U8.Tags.Stream{} = variant -> [variant_description(variant)]
-      _other_tag -> []
-    end)
-    |> Enum.with_index(fn variant, index -> {index, variant} end)
-    |> Map.new()
-  end
-
-  defp variant_description(%ExM3U8.Tags.Stream{} = variant) do
-    variant
-    |> Map.take([:frame_rate, :resolution, :codecs, :bandwidth, :uri])
-  end
-
-  defp handle_choose_variant(variant_id, state) do
-    chosen_variant =
-      get_variants_map(state)
-      |> Map.fetch!(variant_id)
-
-    media_playlist = Path.join(state.base_url, chosen_variant.uri) |> Req.get!()
-
-    deserialized_media_playlist =
-      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
-
-    media_base_url = Path.join(state.base_url, Path.dirname(chosen_variant.uri))
-
-    %{
-      state
-      | media_playlist: deserialized_media_playlist,
-        media_base_url: media_base_url
-    }
-  end
-
-  defp ensure_media_playlist_loaded(%{media_playlist: nil} = state) do
-    state
-  end
-
-  defp ensure_media_playlist_loaded(state) do
-    get_variants_map(state)
+  defp ensure_media_playlist_loaded(%{media_playlist: nil} = client) do
+    get_variants(client)
     |> Map.to_list()
     |> case do
       [] ->
-        read_media_playlist_without_variant(state)
+        read_media_playlist_without_variant(client)
 
       [{variant_id, _variant}] ->
-        handle_choose_variant(variant_id, state)
+        choose_variant(client, variant_id)
 
       _many_variants ->
         raise """
-        If there are available variants, you have to choose one of them using `choose_variant/2` function \
-        before reading frames. \
-        Available variants: #{state.multivariant_playlist.items |> Enum.map(& &1.name) |> inspect(limit: :infinity)}. \
-        You can get more info using `read_variants/1` function.
+        If there are available variants, you have to choose one of them using \
+        `choose_variant/2` function before reading frames. Available variants:
+        #{get_variants(client) |> inspect(limit: :infinity, pretty: true)}
         """
     end
   end
 
-  defp read_media_playlist_without_variant(%{media_playlist: nil} = state) do
+  defp ensure_media_playlist_loaded(client), do: client
+
+  defp read_media_playlist_without_variant(%{media_playlist: nil} = client) do
     media_playlist =
-      state.base_url
+      client.base_url
       |> Path.join("output.m3u8")
       |> Req.get!()
 
@@ -127,84 +75,105 @@ defmodule ExHLS.Client do
       ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
 
     %{
-      state
+      client
       | media_playlist: deserialized_media_playlist,
-        media_base_url: state.base_url
+        media_base_url: client.base_url
     }
   end
 
-  @spec read_variants(client()) :: %{optional(String.t()) => struct()}
-  def read_variants(pid) do
-    GenServer.call(pid, :read_variants)
+  @spec get_variants(client()) :: %{optional(integer()) => variant_description()}
+  def get_variants(client) do
+    client.multivariant_playlist.items
+    |> Enum.filter(&match?(%ExM3U8.Tags.Stream{}, &1))
+    |> Enum.with_index(fn variant, index ->
+      variant_description =
+        variant
+        |> Map.take([:name, :frame_rate, :resolution, :codecs, :bandwidth, :uri])
+        |> Map.put(:id, index)
+
+      {index, variant_description}
+    end)
+    |> Map.new()
   end
 
-  @spec choose_variant(client(), String.t()) :: :ok
-  def choose_variant(pid, variant_name) do
-    GenServer.call(pid, {:choose_variant, variant_name})
+  @spec choose_variant(client(), String.t()) :: client()
+  def choose_variant(client, variant_id) do
+    chosen_variant =
+      get_variants(client)
+      |> Map.fetch!(variant_id)
+
+    media_playlist = Path.join(client.base_url, chosen_variant.uri) |> Req.get!()
+
+    deserialized_media_playlist =
+      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
+
+    media_base_url = Path.join(client.base_url, Path.dirname(chosen_variant.uri))
+
+    %{
+      client
+      | media_playlist: deserialized_media_playlist,
+        media_base_url: media_base_url
+    }
   end
 
   @spec read_video_frame(client()) :: frame() | :end_of_stream
-  def read_video_frame(pid) do
-    GenServer.call(pid, {:read_frame, :video})
-  end
+  def read_video_frame(client), do: do_read_frame(client, :video)
 
   @spec read_audio_frame(client()) :: frame() | :end_of_stream
-  def read_audio_frame(pid) do
-    GenServer.call(pid, {:read_frame, :audio})
-  end
+  def read_audio_frame(client), do: do_read_frame(client, :audio)
 
-  @spec do_read_frame(state(), :audio | :video) :: {frame() | :end_of_stream, state()}
-  defp do_read_frame(state, media_type) do
-    state = ensure_media_playlist_loaded(state)
+  @spec do_read_frame(client(), :audio | :video) :: {frame() | :end_of_stream, client()}
+  defp do_read_frame(client, media_type) do
+    client = ensure_media_playlist_loaded(client)
 
-    impl = state.demuxing_engine_impl
-    track_id = get_track_id(state, media_type)
+    impl = client.demuxing_engine_impl
+    track_id = get_track_id(client, media_type)
 
-    case state.demuxing_engine |> impl.pop_frame(track_id) do
+    case client.demuxing_engine |> impl.pop_frame(track_id) do
       {:error, _reason, demuxing_engine} ->
-        %{state | demuxing_engine: demuxing_engine}
+        %{client | demuxing_engine: demuxing_engine}
         |> download_chunk()
         |> case do
-          {:ok, state} -> do_read_frame(state, media_type)
-          {:end_of_stream, state} -> {:end_of_stream, state}
+          {:ok, client} -> do_read_frame(client, media_type)
+          {:end_of_stream, client} -> {:end_of_stream, client}
         end
 
       {:ok, frame, demuxing_engine} ->
-        state = %{state | demuxing_engine: demuxing_engine}
-        {frame, state}
+        client = %{client | demuxing_engine: demuxing_engine}
+        {frame, client}
     end
   end
 
-  defp download_chunk(state) do
-    impl = state.demuxing_engine_impl
+  defp download_chunk(client) do
+    impl = client.demuxing_engine_impl
 
-    case List.pop_at(state.media_playlist.timeline, 0) do
+    case List.pop_at(client.media_playlist.timeline, 0) do
       {nil, []} ->
-        state = state |> Map.update!(:demuxing_engine, &impl.end_stream/1)
-        {:end_of_stream, state}
+        client = client |> Map.update!(:demuxing_engine, &impl.end_stream/1)
+        {:end_of_stream, client}
 
       {segment_info, rest} ->
         request_result =
-          Path.join(state.media_base_url, segment_info.uri)
+          Path.join(client.media_base_url, segment_info.uri)
           |> Req.get!()
 
-        demuxing_engine = state.demuxing_engine |> impl.feed!(request_result.body)
+        demuxing_engine = client.demuxing_engine |> impl.feed!(request_result.body)
 
-        state =
+        client =
           %{
-            state
+            client
             | demuxing_engine: demuxing_engine,
-              media_playlist: %{state.media_playlist | timeline: rest}
+              media_playlist: %{client.media_playlist | timeline: rest}
           }
 
-        {:ok, state}
+        {:ok, client}
     end
   end
 
-  defp get_track_id(state, type) when type in [:audio, :video] do
-    impl = state.demuxing_engine_impl
+  defp get_track_id(client, type) when type in [:audio, :video] do
+    impl = client.demuxing_engine_impl
 
-    with {:ok, tracks_info} <- state.demuxing_engine |> impl.get_tracks_info() do
+    with {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
       tracks_info
       |> Enum.find_value(fn
         {id, %AAC{}} when type == :audio -> id
