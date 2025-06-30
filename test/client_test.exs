@@ -6,7 +6,6 @@ defmodule Client.Test do
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   describe "if client reads video and audio frames of the HLS" do
-    @tag :a
     test "(MPEGTS) stream" do
       client = Client.new(@mpegts_url, ExHLS.DemuxingEngine.MPEGTS)
 
@@ -39,7 +38,6 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_frame.payload
     end
 
-    @tag :b
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
       assert Client.get_variants(client) == %{}
