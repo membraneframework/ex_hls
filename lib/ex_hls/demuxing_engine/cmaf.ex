@@ -54,8 +54,6 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   end
 
   @impl true
-  @spec get_tracks_info(any()) ::
-          {:error, :not_available_yet} | {:ok, %{optional(integer()) => struct()}}
   def get_tracks_info(demuxing_engine) do
     CMAF.Engine.get_tracks_info(demuxing_engine.demuxer)
   end

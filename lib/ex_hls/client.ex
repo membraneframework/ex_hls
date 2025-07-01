@@ -40,7 +40,10 @@ defmodule ExHLS.Client do
       audio_frames: [],
       video_frames: [],
       demuxing_engine_impl: demuxing_engine_impl,
-      demuxing_engine: demuxing_engine_impl.new()
+      demuxing_engine: demuxing_engine_impl.new(),
+      queues: %{audio: Qex.new(), video: Qex.new()},
+      timestamp_offsets: %{audio: nil, video: nil},
+      last_timestamps: %{audio: nil, video: nil}
     }
   end
 
@@ -117,10 +120,23 @@ defmodule ExHLS.Client do
   end
 
   @spec read_video_frame(client()) :: frame() | :end_of_stream
-  def read_video_frame(client), do: do_read_frame(client, :video)
+  def read_video_frame(client), do: pop_queue_or_do_read_frame(client, :video)
 
   @spec read_audio_frame(client()) :: frame() | :end_of_stream
-  def read_audio_frame(client), do: do_read_frame(client, :audio)
+  def read_audio_frame(client), do: pop_queue_or_do_read_frame(client, :audio)
+
+  defp pop_queue_or_do_read_frame(client, media_type) do
+    client.queues[media_type]
+    |> Qex.pop()
+    |> case do
+      {{:value, frame}, queue} ->
+        client = client |> put_in([:queues, media_type], queue)
+        {frame, client}
+
+      {:empty, _queue} ->
+        do_read_frame(client, media_type)
+    end
+  end
 
   @spec do_read_frame(client(), :audio | :video) :: {frame() | :end_of_stream, client()}
   defp do_read_frame(client, media_type) do
@@ -139,22 +155,65 @@ defmodule ExHLS.Client do
         end
 
       {:ok, frame, demuxing_engine} ->
-        client = %{client | demuxing_engine: demuxing_engine}
+        client =
+          with %{timestamp_offsets: %{^media_type => nil}} <- client do
+            client |> put_in([:timestamp_offsets, media_type], frame.dts)
+          end
+          |> put_in([:last_timestamps, media_type], frame.dts)
+          |> put_in([:demuxing_engine], demuxing_engine)
+
         {frame, client}
+    end
+  end
+
+  @spec get_tracks_info(client()) ::
+          {:ok, %{optional(integer()) => struct()}, client()}
+          | {:error, reason :: any(), client()}
+  def get_tracks_info(client) do
+    client.demuxing_engine
+    |> client.demuxing_engine_impl.get_tracks_info()
+    |> case do
+      {:ok, tracks_info} ->
+        {:ok, tracks_info, client}
+
+      {:error, _reason} ->
+        media_type = media_type_with_lower_ts(client)
+        {frame, client} = do_read_frame(client, media_type)
+
+        if frame == :end_of_stream do
+          {:error, "end of stream reached, but tracks info not available", client}
+        else
+          client
+          |> update_in([:queues, media_type], &Qex.push(&1, frame))
+          |> get_tracks_info()
+        end
+    end
+  end
+
+  defp media_type_with_lower_ts(client) do
+    cond do
+      client.timestamp_offsets.audio == nil ->
+        :audio
+
+      client.timestamp_offsets.video == nil ->
+        :video
+
+      true ->
+        [:audio, :video]
+        |> Enum.min_by(fn media_type ->
+          client.last_timestamps[media_type] - client.timestamp_offsets[media_type]
+        end)
     end
   end
 
   defp download_chunk(client) do
     impl = client.demuxing_engine_impl
+    client = ensure_media_playlist_loaded(client)
 
-    case List.pop_at(client.media_playlist.timeline, 0) do
-      {nil, []} ->
-        client = client |> Map.update!(:demuxing_engine, &impl.end_stream/1)
-        {:end_of_stream, client}
-
-      {segment_info, rest} ->
+    case client.media_playlist.timeline do
+      [%{uri: segment_uri} | rest] ->
         request_result =
-          Path.join(client.media_base_url, segment_info.uri)
+          Path.join(client.media_base_url, segment_uri)
           |> Req.get!()
 
         demuxing_engine = client.demuxing_engine |> impl.feed!(request_result.body)
@@ -167,6 +226,14 @@ defmodule ExHLS.Client do
           }
 
         {:ok, client}
+
+      [_other_tag | rest] ->
+        %{client | media_playlist: %{client.media_playlist | timeline: rest}}
+        |> download_chunk()
+
+      [] ->
+        client = client |> Map.update!(:demuxing_engine, &impl.end_stream/1)
+        {:end_of_stream, client}
     end
   end
 

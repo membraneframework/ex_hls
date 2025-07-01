@@ -3,6 +3,8 @@ defmodule Client.Test do
 
   alias ExHLS.Client
 
+  alias Membrane.{AAC, H264, RemoteStream}
+
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   describe "if client reads video and audio frames of the HLS" do
@@ -16,10 +18,16 @@ defmodule Client.Test do
 
       assert variant_720 != nil
 
-      {video_frame, client} =
-        client
-        |> Client.choose_variant(variant_720.id)
-        |> Client.read_video_frame()
+      client = client |> Client.choose_variant(variant_720.id)
+      {:ok, tracks_info, client} = Client.get_tracks_info(client)
+
+      tracks_info = tracks_info |> Map.values()
+
+      assert tracks_info |> length() == 2
+      assert %RemoteStream{content_format: AAC, type: :bytestream} in tracks_info
+      assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
+
+      {video_frame, client} = client |> Client.read_video_frame()
 
       assert %{pts: 10033, dts: 10000} = video_frame
       assert byte_size(video_frame.payload) == 1048
@@ -40,6 +48,30 @@ defmodule Client.Test do
 
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
+
+      assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
+      tracks_info = tracks_info |> Map.values()
+
+      assert tracks_info |> length() == 2
+
+      assert %H264{
+               width: 480,
+               height: 270,
+               alignment: :au,
+               nalu_in_metadata?: false,
+               stream_structure: {:avc1, _binary}
+             } = tracks_info |> Enum.find(&match?(%H264{}, &1))
+
+      assert %Membrane.AAC{
+               sample_rate: 44100,
+               channels: 2,
+               mpeg_version: 2,
+               samples_per_frame: 1024,
+               frames_per_buffer: 1,
+               encapsulation: :none,
+               config: {:esds, _binary}
+             } = tracks_info |> Enum.find(&match?(%AAC{}, &1))
+
       assert Client.get_variants(client) == %{}
       {video_frame, client} = Client.read_video_frame(client)
 
