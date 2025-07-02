@@ -180,12 +180,13 @@ defmodule ExHLS.Client do
         media_type = media_type_with_lower_ts(client)
         {frame, client} = do_read_frame(client, media_type)
 
-        if frame == :end_of_stream do
-          {:error, "end of stream reached, but tracks info not available", client}
-        else
+        with %ExHLS.Frame{} <- frame do
           client
           |> update_in([:queues, media_type], &Qex.push(&1, frame))
           |> get_tracks_info()
+        else
+          :end_of_stream ->
+            {:error, "end of stream reached, but tracks info is not available", client}
         end
     end
   end

@@ -1,6 +1,8 @@
 defmodule ExHLS.DemuxingEngine.MPEGTS do
   @moduledoc false
 
+  require Logger
+  alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
   @behaviour ExHLS.DemuxingEngine
@@ -35,16 +37,22 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with %{streams: streams} <- demuxing_engine.demuxer.pmt do
       tracks_info =
         streams
-        |> Map.new(fn {id, %{stream_type: stream_type}} ->
-          content_format =
-            case stream_type do
-              :AAC -> Membrane.AAC
-              :H264 -> Membrane.H264
-            end
+        |> Enum.flat_map(fn
+          {id, %{stream_type: :AAC}} ->
+            [{id, %RemoteStream{content_format: AAC}}]
 
-          # todo: maybe change remote stream on HLS and AAC structs
-          {id, %Membrane.RemoteStream{content_format: content_format}}
+          {id, %{stream_type: :H264}} ->
+            [{id, %RemoteStream{content_format: H264}}]
+
+          {id, unsupported_stream_info} ->
+            Logger.warning("""
+            #{__MODULE__ |> inspect()}: dropping unsupported stream with id #{id |> inspect()}.\
+            Stream info: #{unsupported_stream_info |> inspect(pretty: true)}
+            """)
+
+            []
         end)
+        |> Map.new()
 
       {:ok, tracks_info}
     else
