@@ -1,14 +1,14 @@
 defmodule ExHLS.Client do
   @moduledoc """
   Module providing functionality to demux HLS streams.
-  It allows reading frames from the stream, choosing variants, and managing media playlists.
+  It allows reading samples from the stream, choosing variants, and managing media playlists.
   """
 
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
   @opaque client :: map()
-  @type frame :: any()
+  @type sample :: any()
 
   @type variant_description :: %{
           id: integer(),
@@ -37,8 +37,8 @@ defmodule ExHLS.Client do
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
       base_url: Path.dirname(url),
-      audio_frames: [],
-      video_frames: [],
+      audio_samples: [],
+      video_samples: [],
       demuxing_engine_impl: demuxing_engine_impl,
       demuxing_engine: demuxing_engine_impl.new(),
       queues: %{audio: Qex.new(), video: Qex.new()},
@@ -60,7 +60,7 @@ defmodule ExHLS.Client do
       _many_variants ->
         raise """
         If there are available variants, you have to choose one of them using \
-        `choose_variant/2` function before reading frames. Available variants:
+        `choose_variant/2` function before reading samples. Available variants:
         #{get_variants(client) |> inspect(limit: :infinity, pretty: true)}
         """
     end
@@ -119,50 +119,50 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_video_frame(client()) :: frame() | :end_of_stream
-  def read_video_frame(client), do: pop_queue_or_do_read_frame(client, :video)
+  @spec read_video_sample(client()) :: sample() | :end_of_stream
+  def read_video_sample(client), do: pop_queue_or_do_read_sample(client, :video)
 
-  @spec read_audio_frame(client()) :: frame() | :end_of_stream
-  def read_audio_frame(client), do: pop_queue_or_do_read_frame(client, :audio)
+  @spec read_audio_sample(client()) :: sample() | :end_of_stream
+  def read_audio_sample(client), do: pop_queue_or_do_read_sample(client, :audio)
 
-  defp pop_queue_or_do_read_frame(client, media_type) do
+  defp pop_queue_or_do_read_sample(client, media_type) do
     client.queues[media_type]
     |> Qex.pop()
     |> case do
-      {{:value, frame}, queue} ->
+      {{:value, sample}, queue} ->
         client = client |> put_in([:queues, media_type], queue)
-        {frame, client}
+        {sample, client}
 
       {:empty, _queue} ->
-        do_read_frame(client, media_type)
+        do_read_sample(client, media_type)
     end
   end
 
-  @spec do_read_frame(client(), :audio | :video) :: {frame() | :end_of_stream, client()}
-  defp do_read_frame(client, media_type) do
+  @spec do_read_sample(client(), :audio | :video) :: {sample() | :end_of_stream, client()}
+  defp do_read_sample(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
     impl = client.demuxing_engine_impl
     track_id = get_track_id(client, media_type)
 
-    case client.demuxing_engine |> impl.pop_frame(track_id) do
+    case client.demuxing_engine |> impl.pop_sample(track_id) do
       {:error, _reason, demuxing_engine} ->
         %{client | demuxing_engine: demuxing_engine}
         |> download_chunk()
         |> case do
-          {:ok, client} -> do_read_frame(client, media_type)
+          {:ok, client} -> do_read_sample(client, media_type)
           {:end_of_stream, client} -> {:end_of_stream, client}
         end
 
-      {:ok, frame, demuxing_engine} ->
+      {:ok, sample, demuxing_engine} ->
         client =
           with %{timestamp_offsets: %{^media_type => nil}} <- client do
-            client |> put_in([:timestamp_offsets, media_type], frame.dts)
+            client |> put_in([:timestamp_offsets, media_type], sample.dts_ms)
           end
-          |> put_in([:last_timestamps, media_type], frame.dts)
+          |> put_in([:last_timestamps, media_type], sample.dts_ms)
           |> put_in([:demuxing_engine], demuxing_engine)
 
-        {frame, client}
+        {sample, client}
     end
   end
 
@@ -178,11 +178,11 @@ defmodule ExHLS.Client do
 
       {:error, _reason} ->
         media_type = media_type_with_lower_ts(client)
-        {frame, client} = do_read_frame(client, media_type)
+        {sample_or_eos, client} = do_read_sample(client, media_type)
 
-        with %ExHLS.Frame{} <- frame do
+        with %ExHLS.Sample{} <- sample_or_eos do
           client
-          |> update_in([:queues, media_type], &Qex.push(&1, frame))
+          |> update_in([:queues, media_type], &Qex.push(&1, sample_or_eos))
           |> get_tracks_info()
         else
           :end_of_stream ->

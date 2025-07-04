@@ -1,14 +1,14 @@
-defmodule ExHLS.Frame do
+defmodule ExHLS.Sample do
   @moduledoc """
-  A struct representing a media frame in the ExHLS demuxing engine.
+  A struct representing a media sample in the ExHLS demuxing engine.
   """
-  @enforce_keys [:payload, :pts, :dts, :track_id]
+  @enforce_keys [:payload, :pts_ms, :dts_ms, :track_id]
   defstruct @enforce_keys ++ [metadata: %{}]
 
   @type t :: %__MODULE__{
           payload: binary(),
-          pts: integer(),
-          dts: integer(),
+          pts_ms: integer(),
+          dts_ms: integer(),
           track_id: term(),
           metadata: map()
         }

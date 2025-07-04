@@ -5,11 +5,11 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   @behaviour ExHLS.DemuxingEngine
 
   @enforce_keys [:demuxer]
-  defstruct @enforce_keys ++ [tracks_to_frames: %{}]
+  defstruct @enforce_keys ++ [tracks_to_samples: %{}]
 
   @type t :: %__MODULE__{
           demuxer: CMAF.Engine.t(),
-          tracks_to_frames: map()
+          tracks_to_samples: map()
         }
 
   @impl true
@@ -26,31 +26,34 @@ defmodule ExHLS.DemuxingEngine.CMAF do
       |> CMAF.Engine.feed!(binary)
       |> CMAF.Engine.pop_samples()
 
-    new_tracks_to_frames =
+    new_tracks_to_samples =
       samples
       |> Enum.group_by(
         fn sample -> sample.track_id end,
         fn %CMAF.Engine.Sample{} = sample ->
-          %ExHLS.Frame{
+          %ExHLS.Sample{
             payload: sample.payload,
-            pts: sample.pts,
-            dts: sample.dts,
+            pts_ms: sample.pts,
+            dts_ms: sample.dts,
             track_id: sample.track_id
           }
         end
       )
 
-    tracks_to_frames =
-      new_tracks_to_frames
-      |> Enum.reduce(demuxing_engine.tracks_to_frames, fn {track_id, frames}, tracks_to_frames ->
-        tracks_to_frames
-        |> Map.put_new_lazy(track_id, &Qex.new/0)
-        |> Map.update!(track_id, fn track_qex ->
-          frames |> Enum.reduce(track_qex, &Qex.push(&2, &1))
-        end)
-      end)
+    tracks_to_samples =
+      new_tracks_to_samples
+      |> Enum.reduce(
+        demuxing_engine.tracks_to_samples,
+        fn {track_id, new_samples}, tracks_to_samples ->
+          tracks_to_samples
+          |> Map.put_new_lazy(track_id, &Qex.new/0)
+          |> Map.update!(track_id, fn track_qex ->
+            new_samples |> Enum.reduce(track_qex, &Qex.push(&2, &1))
+          end)
+        end
+      )
 
-    %__MODULE__{demuxing_engine | demuxer: demuxer, tracks_to_frames: tracks_to_frames}
+    %__MODULE__{demuxing_engine | demuxer: demuxer, tracks_to_samples: tracks_to_samples}
   end
 
   @impl true
@@ -59,11 +62,11 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   end
 
   @impl true
-  def pop_frame(demuxing_engine, track_id) do
-    with qex when qex != nil <- demuxing_engine.tracks_to_frames[track_id],
-         {{:value, frame}, popped_qex} <- Qex.pop(qex) do
-      demuxing_engine = put_in(demuxing_engine.tracks_to_frames[track_id], popped_qex)
-      {:ok, frame, demuxing_engine}
+  def pop_sample(demuxing_engine, track_id) do
+    with qex when qex != nil <- demuxing_engine.tracks_to_samples[track_id],
+         {{:value, sample}, popped_qex} <- Qex.pop(qex) do
+      demuxing_engine = put_in(demuxing_engine.tracks_to_samples[track_id], popped_qex)
+      {:ok, sample, demuxing_engine}
     else
       nil -> {:error, :unknown_track, demuxing_engine}
       {:empty, _qex} -> {:error, :empty_track_data, demuxing_engine}
