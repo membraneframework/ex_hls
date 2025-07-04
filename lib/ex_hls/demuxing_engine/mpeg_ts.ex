@@ -84,7 +84,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   defp packet_ts_to_millis(ts), do: div(ts, 90)
 
   @impl true
-  @spec end_stream(ExHLS.DemuxingEngine.MPEGTS.t()) :: {:ok, ExHLS.DemuxingEngine.MPEGTS.t()}
   def end_stream(%__MODULE__{} = demuxing_engine) do
     {:ok, %{demuxing_engine | demuxer: Demuxer.end_of_stream(demuxing_engine.demuxer)}}
   end
