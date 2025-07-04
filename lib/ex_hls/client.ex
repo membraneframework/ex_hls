@@ -1,6 +1,6 @@
 defmodule ExHLS.Client do
   @moduledoc """
-  Module providing functionality to demux HLS streams.
+  Module providing functionality to read and demux HLS streams.
   It allows reading samples from the stream, choosing variants, and managing media playlists.
   """
 
