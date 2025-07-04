@@ -49,6 +49,7 @@ defmodule Client.Test do
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
 
+      assert Client.get_variants(client) == %{}
       assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
       tracks_info = tracks_info |> Map.values()
 
@@ -72,7 +73,6 @@ defmodule Client.Test do
                config: {:esds, _binary}
              } = tracks_info |> Enum.find(&match?(%AAC{}, &1))
 
-      assert Client.get_variants(client) == %{}
       {video_sample, client} = Client.read_video_sample(client)
 
       assert %{pts_ms: 0, dts_ms: 0} = video_sample
