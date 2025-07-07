@@ -16,5 +16,6 @@ defmodule ExHLS.Sample do
   # timestamps need to be represented in milliseconds
   @time_base 1000
 
+  @spec time_base() :: integer()
   def time_base(), do: @time_base
 end

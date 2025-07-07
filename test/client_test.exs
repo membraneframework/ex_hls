@@ -29,7 +29,7 @@ defmodule Client.Test do
 
       {video_sample, client} = client |> Client.read_video_sample()
 
-      assert %{pts_ms: 10033, dts_ms: 10000} = video_sample
+      assert %{pts_ms: 10_033, dts_ms: 10_000} = video_sample
       assert byte_size(video_sample.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
@@ -38,7 +38,7 @@ defmodule Client.Test do
 
       {audio_sample, _client} = Client.read_audio_sample(client)
 
-      assert %{pts_ms: 10010, dts_ms: 10010} = audio_sample
+      assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_sample
       assert byte_size(audio_sample.payload) == 6154
 
       assert <<255, 241, 80, 128, 4, 63, 252, 222, 4, 0, 0, 108, 105, 98, 102, 97, 97, 99, 32, 49,
@@ -46,6 +46,7 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_sample.payload
     end
 
+    @tag :a
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url, ExHLS.DemuxingEngine.CMAF)
 
@@ -64,7 +65,7 @@ defmodule Client.Test do
              } = tracks_info |> Enum.find(&match?(%H264{}, &1))
 
       assert %Membrane.AAC{
-               sample_rate: 44100,
+               sample_rate: 44_100,
                channels: 2,
                mpeg_version: 2,
                samples_per_frame: 1024,

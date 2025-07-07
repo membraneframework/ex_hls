@@ -1,8 +1,8 @@
 defmodule ExHLS.DemuxingEngine.CMAF do
   @moduledoc false
-  alias Membrane.MP4.Demuxer.CMAF
-
   @behaviour ExHLS.DemuxingEngine
+
+  alias Membrane.MP4.Demuxer.CMAF
 
   @enforce_keys [:demuxer]
   defstruct @enforce_keys ++ [tracks_to_samples: %{}]

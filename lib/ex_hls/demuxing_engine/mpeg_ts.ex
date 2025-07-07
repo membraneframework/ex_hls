@@ -1,11 +1,10 @@
 defmodule ExHLS.DemuxingEngine.MPEGTS do
   @moduledoc false
+  @behaviour ExHLS.DemuxingEngine
 
   require Logger
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
-
-  @behaviour ExHLS.DemuxingEngine
 
   @enforce_keys [:demuxer]
   defstruct @enforce_keys

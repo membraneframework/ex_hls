@@ -39,8 +39,10 @@ defmodule ExHLS.Client do
       base_url: Path.dirname(url),
       audio_samples: [],
       video_samples: [],
-      demuxing_engine_impl: demuxing_engine_impl,
-      demuxing_engine: demuxing_engine_impl.new(),
+      demuxing_engine_impl: nil,
+      demuxing_engine: nil,
+      # demuxing_engine_impl: demuxing_engine_impl,
+      # demuxing_engine: demuxing_engine_impl.new(),
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil}
@@ -142,27 +144,28 @@ defmodule ExHLS.Client do
   defp do_read_sample(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
-    impl = client.demuxing_engine_impl
-    track_id = get_track_id(client, media_type)
+    with impl when impl != nil <- client.demuxing_engine_impl,
+         track_id <- get_track_id!(client, media_type),
+         {:ok, sample, demuxing_engine} <- client.demuxing_engine |> impl.pop_sample(track_id) do
+      client =
+        with %{timestamp_offsets: %{^media_type => nil}} <- client do
+          client |> put_in([:timestamp_offsets, media_type], sample.dts_ms)
+        end
+        |> put_in([:last_timestamps, media_type], sample.dts_ms)
+        |> put_in([:demuxing_engine], demuxing_engine)
 
-    case client.demuxing_engine |> impl.pop_sample(track_id) do
-      {:error, _reason, demuxing_engine} ->
-        %{client | demuxing_engine: demuxing_engine}
+      {sample, client}
+    else
+      other ->
+        case other do
+          {:error, _reason, demuxing_engine} -> %{client | demuxing_engine: demuxing_engine}
+          nil -> client
+        end
         |> download_chunk()
         |> case do
           {:ok, client} -> do_read_sample(client, media_type)
           {:end_of_stream, client} -> {:end_of_stream, client}
         end
-
-      {:ok, sample, demuxing_engine} ->
-        client =
-          with %{timestamp_offsets: %{^media_type => nil}} <- client do
-            client |> put_in([:timestamp_offsets, media_type], sample.dts_ms)
-          end
-          |> put_in([:last_timestamps, media_type], sample.dts_ms)
-          |> put_in([:demuxing_engine], demuxing_engine)
-
-        {sample, client}
     end
   end
 
@@ -170,13 +173,11 @@ defmodule ExHLS.Client do
           {:ok, %{optional(integer()) => struct()}, client()}
           | {:error, reason :: any(), client()}
   def get_tracks_info(client) do
-    client.demuxing_engine
-    |> client.demuxing_engine_impl.get_tracks_info()
-    |> case do
-      {:ok, tracks_info} ->
-        {:ok, tracks_info, client}
-
-      {:error, _reason} ->
+    with impl when impl != nil <- client.demuxing_engine_impl,
+         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
+      {:ok, tracks_info, client}
+    else
+      _other ->
         media_type = media_type_with_lower_ts(client)
         {sample_or_eos, client} = do_read_sample(client, media_type)
 
@@ -189,6 +190,26 @@ defmodule ExHLS.Client do
             {:error, "end of stream reached, but tracks info is not available", client}
         end
     end
+
+    # client.demuxing_engine
+    # |> client.demuxing_engine_impl.get_tracks_info()
+    # |> case do
+    #   {:ok, tracks_info} ->
+    #     {:ok, tracks_info, client}
+
+    #   {:error, _reason} ->
+    #     media_type = media_type_with_lower_ts(client)
+    #     {sample_or_eos, client} = do_read_sample(client, media_type)
+
+    #     with %ExHLS.Sample{} <- sample_or_eos do
+    #       client
+    #       |> update_in([:queues, media_type], &Qex.push(&1, sample_or_eos))
+    #       |> get_tracks_info()
+    #     else
+    #       :end_of_stream ->
+    #         {:error, "end of stream reached, but tracks info is not available", client}
+    #     end
+    # end
   end
 
   defp media_type_with_lower_ts(client) do
@@ -208,16 +229,22 @@ defmodule ExHLS.Client do
   end
 
   defp download_chunk(client) do
-    impl = client.demuxing_engine_impl
     client = ensure_media_playlist_loaded(client)
 
     case client.media_playlist.timeline do
       [%{uri: segment_uri} | rest] ->
+        client =
+          with %{demuxing_engine: nil} <- client do
+            resolve_demuxing_engine(segment_uri, client)
+          end
+
         request_result =
           Path.join(client.media_base_url, segment_uri)
           |> Req.get!()
 
-        demuxing_engine = client.demuxing_engine |> impl.feed!(request_result.body)
+        demuxing_engine =
+          client.demuxing_engine
+          |> client.demuxing_engine_impl.feed!(request_result.body)
 
         client =
           %{
@@ -233,25 +260,54 @@ defmodule ExHLS.Client do
         |> download_chunk()
 
       [] ->
-        client = client |> Map.update!(:demuxing_engine, &impl.end_stream/1)
+        client =
+          client
+          |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
+
         {:end_of_stream, client}
+    end
+  end
+
+  defp resolve_demuxing_engine(segment_uri, %{demuxing_engine: nil} = client) do
+    demuxing_engine_impl =
+      case Path.extname(segment_uri) do
+        ".ts" -> DemuxingEngine.MPEGTS
+        ".m4s" -> DemuxingEngine.CMAF
+        ".mp4" -> DemuxingEngine.CMAF
+        _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
+      end
+
+    %{
+      client
+      | demuxing_engine_impl: demuxing_engine_impl,
+        demuxing_engine: demuxing_engine_impl.new()
+    }
+  end
+
+  defp get_track_id!(client, type) when type in [:audio, :video] do
+    case get_track_id(client, type) do
+      {:ok, track_id} -> track_id
+      :error -> raise "Track ID for #{type} not found in client #{inspect(client, pretty: true)}"
     end
   end
 
   defp get_track_id(client, type) when type in [:audio, :video] do
     impl = client.demuxing_engine_impl
+    dbg(type)
 
     with {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
       tracks_info
+      |> dbg()
       |> Enum.find_value(fn
-        {id, %AAC{}} when type == :audio -> id
-        {id, %RemoteStream{content_format: AAC}} when type == :audio -> id
-        {id, %H264{}} when type == :video -> id
-        {id, %RemoteStream{content_format: H264}} when type == :video -> id
-        _different_type -> nil
+        {id, %AAC{}} when type == :audio -> {:ok, id}
+        {id, %RemoteStream{content_format: AAC}} when type == :audio -> {:ok, id}
+        {id, %H264{}} when type == :video -> {:ok, id}
+        {id, %RemoteStream{content_format: H264}} when type == :video -> {:ok, id}
+        _different_type -> :error
       end)
+      |> dbg()
     else
-      {:error, _reason} -> nil
+      {:error, _reason} -> :error
     end
   end
 end
