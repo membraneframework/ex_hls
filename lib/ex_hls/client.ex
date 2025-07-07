@@ -293,19 +293,16 @@ defmodule ExHLS.Client do
 
   defp get_track_id(client, type) when type in [:audio, :video] do
     impl = client.demuxing_engine_impl
-    dbg(type)
 
     with {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
       tracks_info
-      |> dbg()
-      |> Enum.find_value(fn
+      |> Enum.find_value(:error, fn
         {id, %AAC{}} when type == :audio -> {:ok, id}
         {id, %RemoteStream{content_format: AAC}} when type == :audio -> {:ok, id}
         {id, %H264{}} when type == :video -> {:ok, id}
         {id, %RemoteStream{content_format: H264}} when type == :video -> {:ok, id}
-        _different_type -> :error
+        _different_type -> false
       end)
-      |> dbg()
     else
       {:error, _reason} -> :error
     end
