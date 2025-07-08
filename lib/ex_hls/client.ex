@@ -26,23 +26,19 @@ defmodule ExHLS.Client do
   By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
   """
 
-  @spec new(String.t(), DemuxingEngine.MPEGTS | DemuxingEngine.CMAF) :: client()
-  def new(url, demuxing_engine_impl \\ DemuxingEngine.MPEGTS) do
-    multivariant_playlist =
-      Req.get!(url).body
-      |> ExM3U8.deserialize_multivariant_playlist!([])
+  @spec new(String.t()) :: client()
+  def new(url) do
+    %{status: 200, body: request_body} = Req.get!(url)
+    multivariant_playlist = request_body |> ExM3U8.deserialize_multivariant_playlist!([])
 
     %{
       media_playlist: nil,
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
       base_url: Path.dirname(url),
-      audio_samples: [],
       video_samples: [],
       demuxing_engine_impl: nil,
       demuxing_engine: nil,
-      # demuxing_engine_impl: demuxing_engine_impl,
-      # demuxing_engine: demuxing_engine_impl.new(),
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil}
@@ -190,26 +186,6 @@ defmodule ExHLS.Client do
             {:error, "end of stream reached, but tracks info is not available", client}
         end
     end
-
-    # client.demuxing_engine
-    # |> client.demuxing_engine_impl.get_tracks_info()
-    # |> case do
-    #   {:ok, tracks_info} ->
-    #     {:ok, tracks_info, client}
-
-    #   {:error, _reason} ->
-    #     media_type = media_type_with_lower_ts(client)
-    #     {sample_or_eos, client} = do_read_sample(client, media_type)
-
-    #     with %ExHLS.Sample{} <- sample_or_eos do
-    #       client
-    #       |> update_in([:queues, media_type], &Qex.push(&1, sample_or_eos))
-    #       |> get_tracks_info()
-    #     else
-    #       :end_of_stream ->
-    #         {:error, "end of stream reached, but tracks info is not available", client}
-    #     end
-    # end
   end
 
   defp media_type_with_lower_ts(client) do
