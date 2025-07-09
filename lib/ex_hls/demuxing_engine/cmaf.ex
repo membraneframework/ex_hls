@@ -74,5 +74,5 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   end
 
   @impl true
-  def end_stream(demuxing_engine), do: {:ok, demuxing_engine}
+  def end_stream(demuxing_engine), do: demuxing_engine
 end
