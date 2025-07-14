@@ -3,6 +3,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @behaviour ExHLS.DemuxingEngine
 
   require Logger
+
+  alias ExHLS.Parsers
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
@@ -10,7 +12,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   defstruct @enforce_keys
 
   @type t :: %__MODULE__{
-          demuxer: Demuxer.t()
+          demuxer: Demuxer.t(),
+          audio: %{track_id: any(), parser: Parsers.AAC.t(), qex: Qex.t()},
+          video: %{track_id: any(), parser: Parsers.H264.t(), qex: Qex.t()}
         }
 
   @impl true
@@ -22,7 +26,19 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     # TODO - figure out how to do it properly
     demuxer = %{demuxer | waiting_random_access_indicator: false}
 
-    %__MODULE__{demuxer: demuxer}
+    %__MODULE__{
+      demuxer: demuxer,
+      audio: %{
+        track_id: nil,
+        parser: Parsers.AAC.new(),
+        qex: Qex.new()
+      },
+      video: %{
+        track_id: nil,
+        parser: Parsers.H264.new(),
+        qex: Qex.new()
+      }
+    }
   end
 
   @impl true
@@ -38,10 +54,10 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         streams
         |> Enum.flat_map(fn
           {id, %{stream_type: :AAC}} ->
-            [{id, %RemoteStream{content_format: AAC}}]
+            [{id, Parsers.AAC.get_stream_format()}]
 
           {id, %{stream_type: :H264}} ->
-            [{id, %RemoteStream{content_format: H264}}]
+            [{id, Parsers.H264.get_stream_format()}]
 
           {id, unsupported_stream_info} ->
             Logger.warning("""
@@ -59,8 +75,13 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
+  defguardp is_known_track_id(track_id, demuxing_engine)
+            when track_id in [demuxing_engine.audio.track_id, demuxing_engine.video.track_id]
+
   @impl true
   def pop_sample(%__MODULE__{} = demuxing_engine, track_id) do
+    state = maybe_resolve_tracks_ids(track_id, demuxing_engine)
+
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       sample = %ExHLS.Sample{
         payload: packet.data,
@@ -77,6 +98,47 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     else
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
+    end
+  end
+
+  defp do_pop_sample(demuxing_engine, track_id, data_type) do
+    case demuxing_engine[data_type].qex |> Qex.pop!() do
+      {{:value, frame}, qex} ->
+        demuxing_engine = demuxing_engine |> put_in([data_type, :qex], qex)
+        {:ok, frame, demuxing_engine}
+
+      {:empty, _qex} ->
+        demuxing_engine
+        |> take_from_demuxer_and_push_on_qex(track_id, data_type)
+        |> do_pop_sample(track_id, data_type)
+    end
+  end
+
+  defp take_parse_and_push_on_qex(demuxing_engine, track_id, data_type) do
+    with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
+    end
+  end
+
+  defp maybe_resolve_tracks_ids(track_id, demuxing_engine) do
+    with false <- is_known_track_id(track_id, demuxing_engine),
+         {:ok, tracks_info} <- get_tracks_info(demuxing_engine) do
+      tracks_info
+      |> Enum.reduce(state, fn
+        {id, %Membrane.AAC{}}, state ->
+          state |> put_in([:audio, :track_id], id)
+
+        {id, %Membrane.H264{}}, state ->
+          state |> put_in([:video, :track_id], id)
+      end)
+    else
+      _other -> state
+    end
+  end
+
+  defp track_data_type(track_id, demuxing_engine) do
+    case track_id do
+      ^demuxing_engine.audio.track_id -> :audio
+      ^demuxing_engine.video.track_id -> :video
     end
   end
 
