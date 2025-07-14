@@ -7,7 +7,7 @@ defmodule Client.Test do
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
-  describe "if client reads video and audio samples of the HLS" do
+  describe "if client reads video and audio chunks of the HLS" do
     test "(MPEGTS) stream" do
       client = Client.new(@mpegts_url)
 
@@ -27,23 +27,23 @@ defmodule Client.Test do
       assert %RemoteStream{content_format: AAC, type: :bytestream} in tracks_info
       assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
 
-      {video_sample, client} = client |> Client.read_video_sample()
+      {video_chunk, client} = client |> Client.read_video_chunk()
 
-      assert %{pts_ms: 10_033, dts_ms: 10_000} = video_sample
-      assert byte_size(video_sample.payload) == 1048
+      assert %{pts_ms: 10_033, dts_ms: 10_000} = video_chunk
+      assert byte_size(video_chunk.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
                0, 0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0,
-               1>> <> _rest = video_sample.payload
+               1>> <> _rest = video_chunk.payload
 
-      {audio_sample, _client} = Client.read_audio_sample(client)
+      {audio_chunk, _client} = Client.read_audio_chunk(client)
 
-      assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_sample
-      assert byte_size(audio_sample.payload) == 6154
+      assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_chunk
+      assert byte_size(audio_chunk.payload) == 6154
 
       assert <<255, 241, 80, 128, 4, 63, 252, 222, 4, 0, 0, 108, 105, 98, 102, 97, 97, 99, 32, 49,
                46, 50, 56, 0, 0, 66, 64, 147, 32, 4, 50, 0, 71, 255, 241, 80, 128, 10, 255, 252,
-               33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_sample.payload
+               33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_chunk.payload
     end
 
     @tag :a
@@ -74,27 +74,27 @@ defmodule Client.Test do
                config: {:esds, _binary}
              } = tracks_info |> Enum.find(&match?(%AAC{}, &1))
 
-      {video_sample, client} = Client.read_video_sample(client)
+      {video_chunk, client} = Client.read_video_chunk(client)
 
-      assert %{pts_ms: 0, dts_ms: 0} = video_sample
-      assert byte_size(video_sample.payload) == 775
+      assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+      assert byte_size(video_chunk.payload) == 775
 
       assert <<0, 0, 2, 171, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72, 183, 150, 44,
                216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114, 101, 32, 49,
-               54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_sample.payload
+               54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_chunk.payload
 
-      {first_audio_sample, client} = Client.read_audio_sample(client)
+      {first_audio_chunk, client} = Client.read_audio_chunk(client)
 
-      assert %{pts_ms: 0, dts_ms: 0} = first_audio_sample
+      assert %{pts_ms: 0, dts_ms: 0} = first_audio_chunk
 
-      assert first_audio_sample.payload ==
+      assert first_audio_chunk.payload ==
                <<220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49, 48, 48, 0, 66, 32, 8, 193, 24,
                  56>>
 
-      {second_audio_sample, _client} = Client.read_audio_sample(client)
+      {second_audio_chunk, _client} = Client.read_audio_chunk(client)
 
-      assert %{pts_ms: 23, dts_ms: 23} = second_audio_sample
-      assert second_audio_sample.payload == <<33, 16, 4, 96, 140, 28>>
+      assert %{pts_ms: 23, dts_ms: 23} = second_audio_chunk
+      assert second_audio_chunk.payload == <<33, 16, 4, 96, 140, 28>>
     end
   end
 end

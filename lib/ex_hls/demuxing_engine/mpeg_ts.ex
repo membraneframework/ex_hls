@@ -60,9 +60,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   @impl true
-  def pop_sample(%__MODULE__{} = demuxing_engine, track_id) do
+  def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
-      sample = %ExHLS.Sample{
+      chunk = %ExHLS.Chunk{
         payload: packet.data,
         pts_ms: packet.pts |> packet_ts_to_millis(),
         dts_ms: packet.dts |> packet_ts_to_millis(),
@@ -73,7 +73,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         }
       }
 
-      {:ok, sample, %{demuxing_engine | demuxer: demuxer}}
+      {:ok, chunk, %{demuxing_engine | demuxer: demuxer}}
     else
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}

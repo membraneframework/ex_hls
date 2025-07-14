@@ -1,6 +1,6 @@
-defmodule ExHLS.Sample do
+defmodule ExHLS.Chunk do
   @moduledoc """
-  A struct representing a media sample in the ExHLS demuxing engine.
+  A struct representing a media chunk in the ExHLS demuxing engine.
   """
   @enforce_keys [:payload, :pts_ms, :dts_ms, :track_id]
   defstruct @enforce_keys ++ [metadata: %{}]

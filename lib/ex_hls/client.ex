@@ -1,14 +1,14 @@
 defmodule ExHLS.Client do
   @moduledoc """
   Module providing functionality to read and demux HLS streams.
-  It allows reading samples from the stream, choosing variants, and managing media playlists.
+  It allows reading chunks from the stream, choosing variants, and managing media playlists.
   """
 
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
   @opaque client :: map()
-  @type sample :: any()
+  @type chunk :: any()
 
   @type variant_description :: %{
           id: integer(),
@@ -36,7 +36,7 @@ defmodule ExHLS.Client do
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
       base_url: Path.dirname(url),
-      video_samples: [],
+      video_chunks: [],
       demuxing_engine_impl: nil,
       demuxing_engine: nil,
       queues: %{audio: Qex.new(), video: Qex.new()},
@@ -58,7 +58,7 @@ defmodule ExHLS.Client do
       _many_variants ->
         raise """
         If there are available variants, you have to choose one of them using \
-        `choose_variant/2` function before reading samples. Available variants:
+        `choose_variant/2` function before reading chunks. Available variants:
         #{get_variants(client) |> inspect(limit: :infinity, pretty: true)}
         """
     end
@@ -117,40 +117,40 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_video_sample(client()) :: sample() | :end_of_stream
-  def read_video_sample(client), do: pop_queue_or_do_read_sample(client, :video)
+  @spec read_video_chunk(client()) :: chunk() | :end_of_stream
+  def read_video_chunk(client), do: pop_queue_or_do_read_chunk(client, :video)
 
-  @spec read_audio_sample(client()) :: sample() | :end_of_stream
-  def read_audio_sample(client), do: pop_queue_or_do_read_sample(client, :audio)
+  @spec read_audio_chunk(client()) :: chunk() | :end_of_stream
+  def read_audio_chunk(client), do: pop_queue_or_do_read_chunk(client, :audio)
 
-  defp pop_queue_or_do_read_sample(client, media_type) do
+  defp pop_queue_or_do_read_chunk(client, media_type) do
     client.queues[media_type]
     |> Qex.pop()
     |> case do
-      {{:value, sample}, queue} ->
+      {{:value, chunk}, queue} ->
         client = client |> put_in([:queues, media_type], queue)
-        {sample, client}
+        {chunk, client}
 
       {:empty, _queue} ->
-        do_read_sample(client, media_type)
+        do_read_chunk(client, media_type)
     end
   end
 
-  @spec do_read_sample(client(), :audio | :video) :: {sample() | :end_of_stream, client()}
-  defp do_read_sample(client, media_type) do
+  @spec do_read_chunk(client(), :audio | :video) :: {chunk() | :end_of_stream, client()}
+  defp do_read_chunk(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
     with impl when impl != nil <- client.demuxing_engine_impl,
          track_id <- get_track_id!(client, media_type),
-         {:ok, sample, demuxing_engine} <- client.demuxing_engine |> impl.pop_sample(track_id) do
+         {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
       client =
         with %{timestamp_offsets: %{^media_type => nil}} <- client do
-          client |> put_in([:timestamp_offsets, media_type], sample.dts_ms)
+          client |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
         end
-        |> put_in([:last_timestamps, media_type], sample.dts_ms)
+        |> put_in([:last_timestamps, media_type], chunk.dts_ms)
         |> put_in([:demuxing_engine], demuxing_engine)
 
-      {sample, client}
+      {chunk, client}
     else
       other ->
         case other do
@@ -159,7 +159,7 @@ defmodule ExHLS.Client do
         end
         |> download_chunk()
         |> case do
-          {:ok, client} -> do_read_sample(client, media_type)
+          {:ok, client} -> do_read_chunk(client, media_type)
           {:end_of_stream, client} -> {:end_of_stream, client}
         end
     end
@@ -175,11 +175,11 @@ defmodule ExHLS.Client do
     else
       _other ->
         media_type = media_type_with_lower_ts(client)
-        {sample_or_eos, client} = do_read_sample(client, media_type)
+        {chunk_or_eos, client} = do_read_chunk(client, media_type)
 
-        with %ExHLS.Sample{} <- sample_or_eos do
+        with %ExHLS.Chunk{} <- chunk_or_eos do
           client
-          |> update_in([:queues, media_type], &Qex.push(&1, sample_or_eos))
+          |> update_in([:queues, media_type], &Qex.push(&1, chunk_or_eos))
           |> get_tracks_info()
         else
           :end_of_stream ->
