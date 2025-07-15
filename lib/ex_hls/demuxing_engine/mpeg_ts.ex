@@ -60,6 +60,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   @impl true
+  @spec pop_chunk(ExHLS.DemuxingEngine.MPEGTS.t(), any()) ::
+          {:error, :empty_track_data, ExHLS.DemuxingEngine.MPEGTS.t()}
+          | {:ok, ExHLS.Chunk.t(), ExHLS.DemuxingEngine.MPEGTS.t()}
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       chunk = %ExHLS.Chunk{
@@ -86,6 +89,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @impl true
   def end_stream(%__MODULE__{} = demuxing_engine) do
     demuxer = Demuxer.end_of_stream(demuxing_engine.demuxer)
+
     %{demuxing_engine | demuxer: demuxer}
   end
 end
