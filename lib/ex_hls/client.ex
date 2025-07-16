@@ -170,7 +170,7 @@ defmodule ExHLS.Client do
           | {:error, reason :: any(), client()}
   def get_tracks_info(client) do
     with impl when impl != nil <- client.demuxing_engine_impl,
-         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
+         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() |> dbg() do
       {:ok, tracks_info, client}
     else
       _other ->

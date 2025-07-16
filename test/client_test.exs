@@ -6,6 +6,7 @@ defmodule Client.Test do
   alias Membrane.{AAC, H264, RemoteStream}
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+  @mpegts_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   describe "if client reads video and audio chunks of the HLS" do
     test "(MPEGTS) stream" do
@@ -96,5 +97,14 @@ defmodule Client.Test do
       assert %{pts_ms: 23, dts_ms: 23} = second_audio_chunk
       assert second_audio_chunk.payload == <<33, 16, 4, 96, 140, 28>>
     end
+  end
+
+  @tag :c
+  test "(MPEGTS) stream with only video" do
+    client = Client.new(@mpegts_video_url)
+
+    assert Client.get_variants(client) == %{}
+    assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
+    tracks_info = tracks_info |> Map.values() |> dbg()
   end
 end

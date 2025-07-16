@@ -33,9 +33,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def get_tracks_info(%__MODULE__{} = demuxing_engine) do
+    demuxing_engine.demuxer.pmt |> dbg()
+
     with %{streams: streams} <- demuxing_engine.demuxer.pmt do
       tracks_info =
         streams
+        |> dbg()
         |> Enum.flat_map(fn
           {id, %{stream_type: :AAC}} ->
             [{id, %RemoteStream{content_format: AAC}}]
