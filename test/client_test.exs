@@ -8,6 +8,11 @@ defmodule Client.Test do
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @mpegts_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
+
+  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/"
+  @fmp4_only_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/fmp4_only_video/output.m3u8"
+  @mpegts_only_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/mpeg_ts_only_video/output_playlist.m3u8"
+
   describe "if client reads video and audio chunks of the HLS" do
     test "(MPEGTS) stream" do
       client = Client.new(@mpegts_url)
@@ -101,7 +106,16 @@ defmodule Client.Test do
 
   @tag :c
   test "(MPEGTS) stream with only video" do
-    client = Client.new(@mpegts_video_url)
+    client = Client.new(@mpegts_only_video_url)
+
+    assert Client.get_variants(client) == %{}
+    assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
+    tracks_info = tracks_info |> Map.values() |> dbg()
+  end
+
+  @tag :d
+  test "(fMP4) stream with only audio" do
+    client = Client.new(@fmp4_only_video_url)
 
     assert Client.get_variants(client) == %{}
     assert {:ok, tracks_info, client} = Client.get_tracks_info(client)

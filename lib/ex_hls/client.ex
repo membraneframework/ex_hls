@@ -39,6 +39,7 @@ defmodule ExHLS.Client do
       video_chunks: [],
       demuxing_engine_impl: nil,
       demuxing_engine: nil,
+      media_types: [:audio, :video],
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil}
@@ -136,12 +137,13 @@ defmodule ExHLS.Client do
     end
   end
 
-  @spec do_read_chunk(client(), :audio | :video) :: {chunk() | :end_of_stream, client()}
+  @spec do_read_chunk(client(), :audio | :video) ::
+          {chunk() | :end_of_stream | {:error, atom()}, client()}
   defp do_read_chunk(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
     with impl when impl != nil <- client.demuxing_engine_impl,
-         track_id <- get_track_id!(client, media_type),
+         {:ok, track_id} <- get_track_id(client, media_type),
          {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
       client =
         with %{timestamp_offsets: %{^media_type => nil}} <- client do
@@ -152,6 +154,12 @@ defmodule ExHLS.Client do
 
       {chunk, client}
     else
+      # returned from the second match
+      :error ->
+        client = %{client | media_types: client.media_types -- [media_type]}
+        {{:error, :no_track_for_media_type}, client}
+
+      # returned from the first or the third match
       other ->
         case other do
           {:error, _reason, demuxing_engine} -> %{client | demuxing_engine: demuxing_engine}
@@ -170,34 +178,40 @@ defmodule ExHLS.Client do
           | {:error, reason :: any(), client()}
   def get_tracks_info(client) do
     with impl when impl != nil <- client.demuxing_engine_impl,
-         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() |> dbg() do
+         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
       {:ok, tracks_info, client}
     else
       _other ->
         media_type = media_type_with_lower_ts(client)
-        {chunk_or_eos, client} = do_read_chunk(client, media_type)
+        {chunk_eos_or_error, client} = do_read_chunk(client, media_type)
 
-        with %ExHLS.Chunk{} <- chunk_or_eos do
+        with %ExHLS.Chunk{} = chunk <- chunk_eos_or_error do
           client
-          |> update_in([:queues, media_type], &Qex.push(&1, chunk_or_eos))
+          |> update_in([:queues, media_type], &Qex.push(&1, chunk))
           |> get_tracks_info()
         else
           :end_of_stream ->
             {:error, "end of stream reached, but tracks info is not available", client}
+
+          {:error, :no_track_for_media_type} when client.media_types != [] ->
+            client |> get_tracks_info()
+
+          {:error, :no_track_for_media_type} when client.media_types == [] ->
+            {:error, "no supported media types in HLS stream", client}
         end
     end
   end
 
   defp media_type_with_lower_ts(client) do
     cond do
-      client.timestamp_offsets.audio == nil ->
+      client.timestamp_offsets.audio == nil and :audio in client.media_types ->
         :audio
 
-      client.timestamp_offsets.video == nil ->
+      client.timestamp_offsets.video == nil and :video in client.media_types ->
         :video
 
       true ->
-        [:audio, :video]
+        client.media_types
         |> Enum.min_by(fn media_type ->
           client.last_timestamps[media_type] - client.timestamp_offsets[media_type]
         end)
