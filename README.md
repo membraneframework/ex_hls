@@ -1,8 +1,8 @@
 # ExHLS
 
-[![Hex.pm](https://img.shields.io/hexpm/v/membrane_template_plugin.svg)](https://hex.pm/packages/ex_hls)
+[![Hex.pm](https://img.shields.io/hexpm/v/ex_hls.svg)](https://hex.pm/packages/ex_hls)
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/ex_hls)
-[![CircleCI](https://circleci.com/gh/membraneframework/membrane_template_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/ex_hls)
+[![CircleCI](https://circleci.com/gh/membraneframework/ex_hls.svg?style=svg)](https://circleci.com/gh/membraneframework/ex_hls)
 
 This repository contains ExHLS - an Elixir package for handling HLS streams
 
