@@ -1,12 +1,12 @@
-defmodule Membrane.Template.Mixfile do
+defmodule ExHLS.Mixfile do
   use Mix.Project
 
   @version "0.1.0"
-  @github_url "https://github.com/membraneframework/membrane_template_plugin"
+  @github_url "https://github.com/membraneframework-labs/ex_hls"
 
   def project do
     [
-      app: :membrane_template_plugin,
+      app: :ex_hls,
       version: @version,
       elixir: "~> 1.13",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -15,11 +15,11 @@ defmodule Membrane.Template.Mixfile do
       dialyzer: dialyzer(),
 
       # hex
-      description: "Template Plugin for Membrane Framework",
+      description: "Elixir package for handling HLS streams",
       package: package(),
 
       # docs
-      name: "Membrane Template plugin",
+      name: "ExHLS",
       source_url: @github_url,
       docs: docs(),
       homepage_url: "https://membrane.stream"
@@ -37,7 +37,13 @@ defmodule Membrane.Template.Mixfile do
 
   defp deps do
     [
-      {:membrane_core, "~> 1.0"},
+      {:ex_m3u8, "~> 0.15.2"},
+      {:req, "~> 0.5.10"},
+      {:qex, "~> 0.5.1"},
+      {:membrane_mp4_plugin, "~> 0.35.3"},
+      {:membrane_h26x_plugin, "~> 0.10.2"},
+      # {:mpeg_ts, github: "kim-company/kim_mpeg_ts"},
+      {:mpeg_ts, github: "membraneframework-labs/kim_mpeg_ts", branch: "backport-v1.0.3"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
@@ -74,7 +80,7 @@ defmodule Membrane.Template.Mixfile do
       extras: ["README.md", "LICENSE"],
       formatters: ["html"],
       source_ref: "v#{@version}",
-      nest_modules_by_prefix: [Membrane.Template]
+      nest_modules_by_prefix: [ExHLS]
     ]
   end
 end
