@@ -35,6 +35,7 @@ defmodule ExHLS.Client do
       media_playlist: nil,
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
+      multivariant_playlist_string: request_body,
       base_url: Path.dirname(url),
       video_chunks: [],
       demuxing_engine_impl: nil,
@@ -68,13 +69,9 @@ defmodule ExHLS.Client do
   defp ensure_media_playlist_loaded(client), do: client
 
   defp read_media_playlist_without_variant(%{media_playlist: nil} = client) do
-    media_playlist =
-      client.base_url
-      |> Path.join("output.m3u8")
-      |> Req.get!()
-
     deserialized_media_playlist =
-      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
+      client.multivariant_playlist_string
+      |> ExM3U8.deserialize_media_playlist!([])
 
     %{
       client
@@ -272,13 +269,6 @@ defmodule ExHLS.Client do
       | demuxing_engine_impl: demuxing_engine_impl,
         demuxing_engine: demuxing_engine_impl.new()
     }
-  end
-
-  defp get_track_id!(client, type) when type in [:audio, :video] do
-    case get_track_id(client, type) do
-      {:ok, track_id} -> track_id
-      :error -> raise "Track ID for #{type} not found in client #{inspect(client, pretty: true)}"
-    end
   end
 
   defp get_track_id(client, type) when type in [:audio, :video] do

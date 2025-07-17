@@ -6,12 +6,11 @@ defmodule Client.Test do
   alias Membrane.{AAC, H264, RemoteStream}
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-  @mpegts_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
 
-  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/"
-  @fmp4_only_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/fmp4_only_video/output.m3u8"
-  @mpegts_only_video_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/mpeg_ts_only_video/output_playlist.m3u8"
+  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/"
+  @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
+  @mpegts_only_video_url @fixtures <> "mpeg_ts_only_video/output_playlist.m3u8"
 
   describe "if client reads video and audio chunks of the HLS" do
     test "(MPEGTS) stream" do
@@ -52,7 +51,6 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_chunk.payload
     end
 
-    @tag :a
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url)
 
@@ -104,13 +102,25 @@ defmodule Client.Test do
     end
   end
 
-  @tag :c
   test "(MPEGTS) stream with only video" do
     client = Client.new(@mpegts_only_video_url)
 
     assert Client.get_variants(client) == %{}
     assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
-    tracks_info = tracks_info |> Map.values() |> dbg()
+
+    assert [%Membrane.RemoteStream{content_format: Membrane.H264, type: :bytestream}] =
+             tracks_info |> Map.values()
+
+    {video_chunk, _client} = Client.read_video_chunk(client)
+
+    assert %{pts_ms: 1480, dts_ms: 1400} = video_chunk
+    assert byte_size(video_chunk.payload) == 822
+
+    assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72,
+             183, 150, 44, 216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114,
+             101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
+
+    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
   end
 
   @tag :d
@@ -119,6 +129,24 @@ defmodule Client.Test do
 
     assert Client.get_variants(client) == %{}
     assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
-    tracks_info = tracks_info |> Map.values() |> dbg()
+
+    assert [
+             %H264{
+               width: 480,
+               height: 270,
+               alignment: :au,
+               nalu_in_metadata?: false,
+               stream_structure: {:avc1, _binary}
+             }
+           ] = tracks_info |> Map.values() |> dbg()
+
+    {video_chunk, _client} = Client.read_video_chunk(client)
+
+    assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+    assert byte_size(video_chunk.payload) == 823
+
+    assert <<0, 0, 0, 2, 9, 240, 0, 0, 2, 171, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217,
+             72, 183, 150, 44, 216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111,
+             114, 101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
   end
 end
