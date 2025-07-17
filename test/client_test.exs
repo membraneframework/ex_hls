@@ -2,7 +2,6 @@ defmodule Client.Test do
   use ExUnit.Case, async: true
 
   alias ExHLS.Client
-
   alias Membrane.{AAC, H264, RemoteStream}
 
   @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/"
@@ -122,8 +121,7 @@ defmodule Client.Test do
     assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
   end
 
-  @tag :d
-  test "(fMP4) stream with only audio" do
+  test "(fMP4) stream with only video" do
     client = Client.new(@fmp4_only_video_url)
 
     assert Client.get_variants(client) == %{}

@@ -35,7 +35,7 @@ defmodule ExHLS.Client do
       media_playlist: nil,
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
-      multivariant_playlist_string: request_body,
+      root_playlist_string: request_body,
       base_url: Path.dirname(url),
       video_chunks: [],
       demuxing_engine_impl: nil,
@@ -70,7 +70,7 @@ defmodule ExHLS.Client do
 
   defp read_media_playlist_without_variant(%{media_playlist: nil} = client) do
     deserialized_media_playlist =
-      client.multivariant_playlist_string
+      client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
 
     %{
