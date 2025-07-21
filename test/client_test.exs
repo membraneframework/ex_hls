@@ -4,7 +4,7 @@ defmodule Client.Test do
   alias ExHLS.Client
   alias Membrane.{AAC, H264, RemoteStream}
 
-  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/support-one-media-type/test/fixtures/"
+  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/master/test/fixtures/"
   @fmp4_url @fixtures <> "fmp4/output.m3u8"
   @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
   @mpegts_only_video_url @fixtures <> "mpeg_ts_only_video/output_playlist.m3u8"
