@@ -294,7 +294,7 @@ defmodule ExHLS.Client do
   defp skip_to_start_at(media_playlist, start_at_ms) do
     timeline =
       Enum.map_reduce(
-        media_playlist.timeline |> dbg(),
+        media_playlist.timeline,
         0,
         fn
           %ExM3U8.Tags.Segment{} = chunk, cumulative_duration_ms ->
