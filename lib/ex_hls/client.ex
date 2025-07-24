@@ -26,8 +26,8 @@ defmodule ExHLS.Client do
   By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
   """
 
-  @spec new(String.t()) :: client()
-  def new(url) do
+  @spec new(String.t(), non_neg_integer()) :: client()
+  def new(url, start_at_ms \\ 0) do
     %{status: 200, body: request_body} = Req.get!(url)
     multivariant_playlist = request_body |> ExM3U8.deserialize_multivariant_playlist!([])
 
@@ -43,7 +43,8 @@ defmodule ExHLS.Client do
       media_types: [:audio, :video],
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
-      last_timestamps: %{audio: nil, video: nil}
+      last_timestamps: %{audio: nil, video: nil},
+      start_at_ms: start_at_ms
     }
   end
 
@@ -72,6 +73,7 @@ defmodule ExHLS.Client do
     deserialized_media_playlist =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
+      |> skip_to_start_at(client.start_at_ms)
 
     %{
       client
@@ -105,6 +107,7 @@ defmodule ExHLS.Client do
 
     deserialized_media_playlist =
       ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
+      |> skip_to_start_at(client.start_at_ms)
 
     media_base_url = Path.join(client.base_url, Path.dirname(chosen_variant.uri))
 
@@ -286,5 +289,28 @@ defmodule ExHLS.Client do
     else
       {:error, _reason} -> :error
     end
+  end
+
+  defp skip_to_start_at(media_playlist, start_at_ms) do
+    timeline =
+      Enum.map_reduce(
+        media_playlist.timeline |> dbg(),
+        0,
+        fn
+          %ExM3U8.Tags.Segment{} = chunk, cumulative_duration_ms ->
+            chunk_end_ms = cumulative_duration_ms + 1000 * chunk.duration
+            {{chunk, chunk_end_ms}, chunk_end_ms}
+
+          other_tag, cumulative_duration_ms ->
+            {{other_tag, cumulative_duration_ms}, cumulative_duration_ms}
+        end
+      )
+      |> elem(0)
+      |> Enum.reject(fn
+        {_chunk, chunk_end_ms} -> chunk_end_ms < start_at_ms
+      end)
+      |> Enum.map(&elem(&1, 0))
+
+    put_in(media_playlist.timeline, timeline)
   end
 end

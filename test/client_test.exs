@@ -146,4 +146,45 @@ defmodule Client.Test do
              72, 183, 150, 44, 216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111,
              114, 101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
   end
+
+  test "(MPEGTS) stream with start_at_ms" do
+    start_at_ms = 40_000
+    client = Client.new(@mpegts_url, start_at_ms)
+
+    variant_720 =
+      Client.get_variants(client)
+      |> Map.values()
+      |> Enum.find(&(&1.resolution == {1280, 720}))
+
+    assert variant_720 != nil
+
+    client = client |> Client.choose_variant(variant_720.id)
+    {:ok, tracks_info, client} = Client.get_tracks_info(client)
+
+    tracks_info = tracks_info |> Map.values()
+
+    assert tracks_info |> length() == 2
+    assert %RemoteStream{content_format: AAC, type: :bytestream} in tracks_info
+    assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
+
+    {video_chunk, client} = client |> Client.read_video_chunk()
+
+    assert %{pts_ms: 40_033, dts_ms: 40_000} = video_chunk
+    assert byte_size(video_chunk.payload) == 155_068
+
+    assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16, 0,
+             0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1, 104, 233, 121, 203, 34,
+             192, 0, 0, 1, 101, 136>> <> _rest = video_chunk.payload
+
+    {audio_chunk, _client} = Client.read_audio_chunk(client)
+
+    assert %{pts_ms: 40_010, dts_ms: 40_010} = audio_chunk
+    assert byte_size(audio_chunk.payload) == 6073
+
+    assert <<255, 241, 80, 128, 43, 95, 252, 33, 10, 204, 106, 255, 159, 180, 119, 136, 64, 192,
+             104, 40, 38, 18, 5, 130, 129, 80, 184, 80, 36, 19, 10, 5, 68, 129, 33, 40, 72, 226,
+             231, 127, 199, 212, 241, 95, 227, 248, 253, 253, 247,
+             244>> <> _rest =
+             audio_chunk.payload
+  end
 end
