@@ -162,7 +162,8 @@ defmodule ExHLS.Client do
          {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
       client =
         with %{timestamp_offsets: %{^media_type => nil}} <- client do
-          client |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
+          client
+          |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
         end
         |> put_in([:last_timestamps, media_type], chunk.dts_ms)
         |> put_in([:demuxing_engine], demuxing_engine)
