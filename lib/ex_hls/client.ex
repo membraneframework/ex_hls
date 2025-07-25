@@ -133,10 +133,10 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_video_chunk(client()) :: __MODULE__.Chunk.t() | :end_of_stream
+  @spec read_video_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
   def read_video_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :video)
 
-  @spec read_audio_chunk(client()) :: __MODULE__.Chunk.t() | :end_of_stream
+  @spec read_audio_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
   def read_audio_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :audio)
 
   defp pop_queue_or_do_read_chunk(client, media_type) do
@@ -153,7 +153,7 @@ defmodule ExHLS.Client do
   end
 
   @spec do_read_chunk(client(), :audio | :video) ::
-          {__MODULE__.Chunk.t() | :end_of_stream | {:error, atom()}, client()}
+          {ExHLS.Chunk.t() | :end_of_stream | {:error, atom()}, client()}
   defp do_read_chunk(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
