@@ -86,7 +86,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @impl true
   def end_stream(%__MODULE__{} = demuxing_engine) do
     demuxer = Demuxer.end_of_stream(demuxing_engine.demuxer)
-
     %{demuxing_engine | demuxer: demuxer}
   end
 end

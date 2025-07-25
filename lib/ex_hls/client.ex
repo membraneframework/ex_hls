@@ -7,8 +7,9 @@ defmodule ExHLS.Client do
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
+  # defstruct [:]
+
   @opaque client :: map()
-  @type chunk :: any()
 
   @type variant_description :: %{
           id: integer(),
@@ -37,13 +38,13 @@ defmodule ExHLS.Client do
       multivariant_playlist: multivariant_playlist,
       root_playlist_string: request_body,
       base_url: Path.dirname(url),
-      video_chunks: [],
       demuxing_engine_impl: nil,
       demuxing_engine: nil,
       media_types: [:audio, :video],
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
-      last_timestamps: %{audio: nil, video: nil}
+      last_timestamps: %{audio: nil, video: nil},
+      end_stream_executed?: false
     }
   end
 
@@ -115,10 +116,10 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_video_chunk(client()) :: chunk() | :end_of_stream
+  @spec read_video_chunk(client()) :: __MODULE__.Chunk.t() | :end_of_stream
   def read_video_chunk(client), do: pop_queue_or_do_read_chunk(client, :video)
 
-  @spec read_audio_chunk(client()) :: chunk() | :end_of_stream
+  @spec read_audio_chunk(client()) :: __MODULE__.Chunk.t() | :end_of_stream
   def read_audio_chunk(client), do: pop_queue_or_do_read_chunk(client, :audio)
 
   defp pop_queue_or_do_read_chunk(client, media_type) do
@@ -135,7 +136,7 @@ defmodule ExHLS.Client do
   end
 
   @spec do_read_chunk(client(), :audio | :video) ::
-          {chunk() | :end_of_stream | {:error, atom()}, client()}
+          {__MODULE__.Chunk.t() | :end_of_stream | {:error, atom()}, client()}
   defp do_read_chunk(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
@@ -164,8 +165,18 @@ defmodule ExHLS.Client do
         end
         |> download_chunk()
         |> case do
-          {:ok, client} -> do_read_chunk(client, media_type)
-          {:end_of_stream, client} -> {:end_of_stream, client}
+          {:ok, client} ->
+            do_read_chunk(client, media_type)
+
+          {:error, :no_more_segments, client} when not client.end_stream_executed? ->
+            # after calling `end_stream/1` there is a chance that `pop_chunk/2` will flush
+            # some remaining data
+            %{client | end_stream_executed?: true}
+            |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
+            |> do_read_chunk(media_type)
+
+          {:error, :no_more_segments, client} when client.end_stream_executed? ->
+            {:end_of_stream, client}
         end
     end
   end
@@ -251,7 +262,7 @@ defmodule ExHLS.Client do
           client
           |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
 
-        {:end_of_stream, client}
+        {:error, :no_more_segments, client}
     end
   end
 
