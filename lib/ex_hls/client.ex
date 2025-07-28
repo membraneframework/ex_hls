@@ -4,11 +4,29 @@ defmodule ExHLS.Client do
   It allows reading chunks from the stream, choosing variants, and managing media playlists.
   """
 
+  use Bunch.Access
+
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
-  @opaque client :: map()
-  @type chunk :: any()
+  @enforce_keys [
+    :media_playlist,
+    :media_base_url,
+    :multivariant_playlist,
+    :root_playlist_string,
+    :base_url,
+    :demuxing_engine_impl,
+    :demuxing_engine,
+    :media_types,
+    :queues,
+    :timestamp_offsets,
+    :last_timestamps,
+    :end_stream_executed?
+  ]
+
+  defstruct @enforce_keys
+
+  @opaque client :: %__MODULE__{}
 
   @type variant_description :: %{
           id: integer(),
@@ -31,23 +49,23 @@ defmodule ExHLS.Client do
     %{status: 200, body: request_body} = Req.get!(url)
     multivariant_playlist = request_body |> ExM3U8.deserialize_multivariant_playlist!([])
 
-    %{
+    %__MODULE__{
       media_playlist: nil,
       media_base_url: nil,
       multivariant_playlist: multivariant_playlist,
       root_playlist_string: request_body,
       base_url: Path.dirname(url),
-      video_chunks: [],
       demuxing_engine_impl: nil,
       demuxing_engine: nil,
       media_types: [:audio, :video],
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
-      last_timestamps: %{audio: nil, video: nil}
+      last_timestamps: %{audio: nil, video: nil},
+      end_stream_executed?: false
     }
   end
 
-  defp ensure_media_playlist_loaded(%{media_playlist: nil} = client) do
+  defp ensure_media_playlist_loaded(%__MODULE__{media_playlist: nil} = client) do
     get_variants(client)
     |> Map.to_list()
     |> case do
@@ -68,7 +86,7 @@ defmodule ExHLS.Client do
 
   defp ensure_media_playlist_loaded(client), do: client
 
-  defp read_media_playlist_without_variant(%{media_playlist: nil} = client) do
+  defp read_media_playlist_without_variant(%__MODULE__{media_playlist: nil} = client) do
     deserialized_media_playlist =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
@@ -81,7 +99,7 @@ defmodule ExHLS.Client do
   end
 
   @spec get_variants(client()) :: %{optional(integer()) => variant_description()}
-  def get_variants(client) do
+  def get_variants(%__MODULE__{} = client) do
     client.multivariant_playlist.items
     |> Enum.filter(&match?(%ExM3U8.Tags.Stream{}, &1))
     |> Enum.with_index(fn variant, index ->
@@ -96,7 +114,7 @@ defmodule ExHLS.Client do
   end
 
   @spec choose_variant(client(), String.t()) :: client()
-  def choose_variant(client, variant_id) do
+  def choose_variant(%__MODULE__{} = client, variant_id) do
     chosen_variant =
       get_variants(client)
       |> Map.fetch!(variant_id)
@@ -115,11 +133,11 @@ defmodule ExHLS.Client do
     }
   end
 
-  @spec read_video_chunk(client()) :: chunk() | :end_of_stream
-  def read_video_chunk(client), do: pop_queue_or_do_read_chunk(client, :video)
+  @spec read_video_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
+  def read_video_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :video)
 
-  @spec read_audio_chunk(client()) :: chunk() | :end_of_stream
-  def read_audio_chunk(client), do: pop_queue_or_do_read_chunk(client, :audio)
+  @spec read_audio_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
+  def read_audio_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :audio)
 
   defp pop_queue_or_do_read_chunk(client, media_type) do
     client.queues[media_type]
@@ -135,7 +153,7 @@ defmodule ExHLS.Client do
   end
 
   @spec do_read_chunk(client(), :audio | :video) ::
-          {chunk() | :end_of_stream | {:error, atom()}, client()}
+          {ExHLS.Chunk.t() | :end_of_stream | {:error, atom()}, client()}
   defp do_read_chunk(client, media_type) do
     client = ensure_media_playlist_loaded(client)
 
@@ -144,7 +162,8 @@ defmodule ExHLS.Client do
          {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
       client =
         with %{timestamp_offsets: %{^media_type => nil}} <- client do
-          client |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
+          client
+          |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
         end
         |> put_in([:last_timestamps, media_type], chunk.dts_ms)
         |> put_in([:demuxing_engine], demuxing_engine)
@@ -164,8 +183,18 @@ defmodule ExHLS.Client do
         end
         |> download_chunk()
         |> case do
-          {:ok, client} -> do_read_chunk(client, media_type)
-          {:end_of_stream, client} -> {:end_of_stream, client}
+          {:ok, client} ->
+            do_read_chunk(client, media_type)
+
+          {:error, :no_more_segments, client} when not client.end_stream_executed? ->
+            # after calling `end_stream/1` there is a chance that `pop_chunk/2` will flush
+            # some remaining data
+            %{client | end_stream_executed?: true}
+            |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
+            |> do_read_chunk(media_type)
+
+          {:error, :no_more_segments, client} when client.end_stream_executed? ->
+            {:end_of_stream, client}
         end
     end
   end
@@ -173,7 +202,7 @@ defmodule ExHLS.Client do
   @spec get_tracks_info(client()) ::
           {:ok, %{optional(integer()) => struct()}, client()}
           | {:error, reason :: any(), client()}
-  def get_tracks_info(client) do
+  def get_tracks_info(%__MODULE__{} = client) do
     with impl when impl != nil <- client.demuxing_engine_impl,
          {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
       {:ok, tracks_info, client}
@@ -251,7 +280,7 @@ defmodule ExHLS.Client do
           client
           |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
 
-        {:end_of_stream, client}
+        {:error, :no_more_segments, client}
     end
   end
 
