@@ -3,6 +3,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   @behaviour ExHLS.DemuxingEngine
 
   alias Membrane.MP4.Demuxer.CMAF
+  alias Membrane.MP4.Demuxer.Sample
 
   @enforce_keys [:demuxer]
   defstruct @enforce_keys ++ [tracks_to_chunks: %{}]
@@ -30,7 +31,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
       chunks
       |> Enum.group_by(
         fn chunk -> chunk.track_id end,
-        fn %CMAF.Engine.Sample{} = chunk ->
+        fn %Sample{} = chunk ->
           %ExHLS.Chunk{
             payload: chunk.payload,
             pts_ms: chunk.pts,
