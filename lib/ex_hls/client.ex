@@ -341,8 +341,9 @@ defmodule ExHLS.Client do
         end
       )
       |> elem(0)
-      |> Enum.split_while(fn
-        {_chunk, chunk_end_ms} -> chunk_end_ms <= start_at_ms
+      |> Enum.split_with(fn
+        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms <= start_at_ms
+        _other -> false
       end)
 
     base_timestamp_ms =
