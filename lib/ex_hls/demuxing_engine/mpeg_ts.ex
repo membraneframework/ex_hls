@@ -80,8 +80,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
-  @mpegts_clock_rate 90
-  defp packet_ts_to_millis(ts), do: div(ts, @mpegts_clock_rate)
+  # value returned by Demuxer is represented in nanoseconds
+  defp packet_ts_to_millis(ts), do: div(ts, 1_000_000)
 
   @impl true
   def end_stream(%__MODULE__{} = demuxing_engine) do

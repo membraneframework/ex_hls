@@ -44,7 +44,8 @@ defmodule ExHLS.Client do
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil},
-      start_at_ms: start_at_ms
+      start_at_ms: start_at_ms,
+      base_timestamp_ms: nil
     }
   end
 
@@ -70,7 +71,7 @@ defmodule ExHLS.Client do
   defp ensure_media_playlist_loaded(client), do: client
 
   defp read_media_playlist_without_variant(%{media_playlist: nil} = client) do
-    deserialized_media_playlist =
+    {deserialized_media_playlist, base_timestamp_ms} =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
       |> skip_to_start_at(client.start_at_ms)
@@ -78,7 +79,8 @@ defmodule ExHLS.Client do
     %{
       client
       | media_playlist: deserialized_media_playlist,
-        media_base_url: client.base_url
+        media_base_url: client.base_url,
+        base_timestamp_ms: base_timestamp_ms
     }
   end
 
@@ -105,7 +107,7 @@ defmodule ExHLS.Client do
 
     media_playlist = Path.join(client.base_url, chosen_variant.uri) |> Req.get!()
 
-    deserialized_media_playlist =
+    {deserialized_media_playlist, base_timestamp_ms} =
       ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
       |> skip_to_start_at(client.start_at_ms)
 
@@ -114,7 +116,8 @@ defmodule ExHLS.Client do
     %{
       client
       | media_playlist: deserialized_media_playlist,
-        media_base_url: media_base_url
+        media_base_url: media_base_url,
+        base_timestamp_ms: base_timestamp_ms
     }
   end
 
@@ -152,6 +155,7 @@ defmodule ExHLS.Client do
         |> put_in([:last_timestamps, media_type], chunk.dts_ms)
         |> put_in([:demuxing_engine], demuxing_engine)
 
+      chunk = normalize_timestamps(chunk, client.base_timestamp_ms)
       {chunk, client}
     else
       # returned from the second match
@@ -292,7 +296,7 @@ defmodule ExHLS.Client do
   end
 
   defp skip_to_start_at(media_playlist, start_at_ms) do
-    timeline =
+    {discarded, timeline_with_cumulative_duration} =
       Enum.map_reduce(
         media_playlist.timeline,
         0,
@@ -306,11 +310,26 @@ defmodule ExHLS.Client do
         end
       )
       |> elem(0)
-      |> Enum.reject(fn
-        {_chunk, chunk_end_ms} -> chunk_end_ms < start_at_ms
+      |> Enum.split_while(fn
+        {_chunk, chunk_end_ms} -> chunk_end_ms <= start_at_ms
       end)
-      |> Enum.map(&elem(&1, 0))
 
-    put_in(media_playlist.timeline, timeline)
+    base_timestamp_ms =
+      case Enum.at(discarded, -1) do
+        nil -> 0
+        {_discarded_timeline, cumulative_duration_ms} -> cumulative_duration_ms
+      end
+
+    timeline = Enum.map(timeline_with_cumulative_duration, &elem(&1, 0))
+
+    {put_in(media_playlist.timeline, timeline), base_timestamp_ms}
+  end
+
+  defp normalize_timestamps(chunk, base_timestamp_ms) do
+    %{
+      chunk
+      | pts_ms: round(chunk.pts_ms + base_timestamp_ms),
+        dts_ms: round(chunk.dts_ms + base_timestamp_ms)
+    }
   end
 end

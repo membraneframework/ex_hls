@@ -32,7 +32,7 @@ defmodule Client.Test do
 
       {video_chunk, client} = client |> Client.read_video_chunk()
 
-      assert %{pts_ms: 10_033, dts_ms: 10_000} = video_chunk
+      assert %{pts_ms: 0, dts_ms: 0} = video_chunk
       assert byte_size(video_chunk.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
@@ -41,7 +41,7 @@ defmodule Client.Test do
 
       {audio_chunk, _client} = Client.read_audio_chunk(client)
 
-      assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_chunk
+      assert %{pts_ms: 0, dts_ms: 0} = audio_chunk
       assert byte_size(audio_chunk.payload) == 6154
 
       assert <<255, 241, 80, 128, 4, 63, 252, 222, 4, 0, 0, 108, 105, 98, 102, 97, 97, 99, 32, 49,
@@ -111,7 +111,7 @@ defmodule Client.Test do
 
     {video_chunk, _client} = Client.read_video_chunk(client)
 
-    assert %{pts_ms: 1480, dts_ms: 1400} = video_chunk
+    assert %{pts_ms: 0, dts_ms: 0} = video_chunk
     assert byte_size(video_chunk.payload) == 822
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72,
@@ -169,8 +169,8 @@ defmodule Client.Test do
 
     {video_chunk, client} = client |> Client.read_video_chunk()
 
-    assert %{pts_ms: 40_033, dts_ms: 40_000} = video_chunk
-    assert byte_size(video_chunk.payload) == 155_068
+    assert %{pts_ms: 40_004, dts_ms: 40_004} = video_chunk
+    assert byte_size(video_chunk.payload) == 135_298
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16, 0,
              0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1, 104, 233, 121, 203, 34,
@@ -178,13 +178,11 @@ defmodule Client.Test do
 
     {audio_chunk, _client} = Client.read_audio_chunk(client)
 
-    assert %{pts_ms: 40_010, dts_ms: 40_010} = audio_chunk
-    assert byte_size(audio_chunk.payload) == 6073
+    assert %{pts_ms: 40_004, dts_ms: 40_004} = audio_chunk
+    assert byte_size(audio_chunk.payload) == 6020
 
-    assert <<255, 241, 80, 128, 43, 95, 252, 33, 10, 204, 106, 255, 159, 180, 119, 136, 64, 192,
-             104, 40, 38, 18, 5, 130, 129, 80, 184, 80, 36, 19, 10, 5, 68, 129, 33, 40, 72, 226,
-             231, 127, 199, 212, 241, 95, 227, 248, 253, 253, 247,
-             244>> <> _rest =
-             audio_chunk.payload
+    assert <<255, 241, 80, 128, 47, 63, 252, 33, 10, 204, 43, 253, 251, 213, 30, 152, 129, 48, 80,
+             38, 22, 18, 5, 130, 129, 113, 34, 92, 36, 20, 25, 9, 2, 193, 64, 144, 68, 36, 17, 75,
+             215, 198, 77, 184, 229, 170, 157, 115, 169, 223>> <> _rest = audio_chunk.payload
   end
 end
