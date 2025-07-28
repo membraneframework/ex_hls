@@ -21,6 +21,8 @@ defmodule ExHLS.Client do
     :queues,
     :timestamp_offsets,
     :last_timestamps,
+    :start_at_ms,
+    :base_timestamp_ms,
     :end_stream_executed?
   ]
 
