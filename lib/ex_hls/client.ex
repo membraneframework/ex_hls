@@ -341,7 +341,7 @@ defmodule ExHLS.Client do
       )
       |> elem(0)
       |> Enum.split_with(fn
-        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms <= start_at_ms
+        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms < start_at_ms
         _other -> false
       end)
 

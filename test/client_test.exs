@@ -32,7 +32,7 @@ defmodule Client.Test do
 
       {video_chunk, client} = client |> Client.read_video_chunk()
 
-      assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+      assert %{pts_ms: 10_033, dts_ms: 10_000} = video_chunk
       assert byte_size(video_chunk.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
@@ -41,7 +41,7 @@ defmodule Client.Test do
 
       {audio_chunk, _client} = Client.read_audio_chunk(client)
 
-      assert %{pts_ms: 0, dts_ms: 0} = audio_chunk
+      assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_chunk
       assert byte_size(audio_chunk.payload) == 6154
 
       assert <<255, 241, 80, 128, 4, 63, 252, 222, 4, 0, 0, 108, 105, 98, 102, 97, 97, 99, 32, 49,
@@ -111,7 +111,7 @@ defmodule Client.Test do
 
     {video_chunk, _client} = Client.read_video_chunk(client)
 
-    assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+    assert %{pts_ms: 1480, dts_ms: 1400} = video_chunk
     assert byte_size(video_chunk.payload) == 822
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72,
@@ -148,7 +148,7 @@ defmodule Client.Test do
   end
 
   test "(MPEGTS) stream with start_at_ms" do
-    start_at_ms = 40_000
+    start_at_ms = 44_000
     client = Client.new(@mpegts_url, start_at_ms)
 
     variant_720 =
@@ -169,7 +169,10 @@ defmodule Client.Test do
 
     {video_chunk, client} = client |> Client.read_video_chunk()
 
-    assert %{pts_ms: 40_004, dts_ms: 40_004} = video_chunk
+    # segments in the fixture are 10s long and
+    # the timestamps offset is 10s, so the first
+    # video pts after skipping initial 44 seconds should be div(10+44, 10) = 50s
+    assert %{pts_ms: 50_033, dts_ms: 50_000} = video_chunk
     assert byte_size(video_chunk.payload) == 135_298
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16, 0,
@@ -178,7 +181,7 @@ defmodule Client.Test do
 
     {audio_chunk, _client} = Client.read_audio_chunk(client)
 
-    assert %{pts_ms: 40_004, dts_ms: 40_004} = audio_chunk
+    assert %{pts_ms: 50_018, dts_ms: 50_018} = audio_chunk
     assert byte_size(audio_chunk.payload) == 6020
 
     assert <<255, 241, 80, 128, 47, 63, 252, 33, 10, 204, 43, 253, 251, 213, 30, 152, 129, 48, 80,
