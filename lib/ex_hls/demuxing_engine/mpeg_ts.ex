@@ -14,7 +14,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         }
 
   @impl true
-  def new() do
+  def new(_base_timestamp_ms) do
     demuxer = Demuxer.new()
 
     # we need to explicitly override that `waiting_random_access_indicator` as otherwise Demuxer

@@ -176,7 +176,6 @@ defmodule ExHLS.Client do
         |> put_in([:last_timestamps, media_type], chunk.dts_ms)
         |> put_in([:demuxing_engine], demuxing_engine)
 
-      chunk = normalize_timestamps(chunk, client.base_timestamp_ms)
       {chunk, client}
     else
       # returned from the second match
@@ -305,7 +304,7 @@ defmodule ExHLS.Client do
     %{
       client
       | demuxing_engine_impl: demuxing_engine_impl,
-        demuxing_engine: demuxing_engine_impl.new()
+        demuxing_engine: demuxing_engine_impl.new(client.base_timestamp_ms)
     }
   end
 
@@ -355,13 +354,5 @@ defmodule ExHLS.Client do
     timeline = Enum.map(timeline_with_cumulative_duration, &elem(&1, 0))
 
     {put_in(media_playlist.timeline, timeline), base_timestamp_ms}
-  end
-
-  defp normalize_timestamps(chunk, base_timestamp_ms) do
-    %{
-      chunk
-      | pts_ms: round(chunk.pts_ms + base_timestamp_ms),
-        dts_ms: round(chunk.dts_ms + base_timestamp_ms)
-    }
   end
 end
