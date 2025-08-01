@@ -346,7 +346,7 @@ defmodule ExHLS.Client do
       end)
 
     base_timestamp_ms =
-      case Enum.at(discarded, -1) do
+      case List.last(discarded) do
         nil -> 0
         {_discarded_timeline, cumulative_duration_ms} -> cumulative_duration_ms
       end
