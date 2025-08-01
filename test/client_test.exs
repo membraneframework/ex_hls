@@ -147,9 +147,9 @@ defmodule Client.Test do
              114, 101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
   end
 
-  test "(MPEGTS) stream with start_at_ms" do
-    start_at_ms = 44_000
-    client = Client.new(@mpegts_url, start_at_ms)
+  test "(MPEGTS) stream with how_much_to_skip_ms" do
+    how_much_to_skip_ms = 44_000
+    client = Client.new(@mpegts_url, how_much_to_skip_ms)
 
     variant_720 =
       Client.get_variants(client)

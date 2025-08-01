@@ -21,7 +21,7 @@ defmodule ExHLS.Client do
     :queues,
     :timestamp_offsets,
     :last_timestamps,
-    :start_at_ms,
+    :how_much_to_skip_ms,
     :base_timestamp_ms,
     :end_stream_executed?
   ]
@@ -47,7 +47,7 @@ defmodule ExHLS.Client do
   """
 
   @spec new(String.t(), non_neg_integer()) :: client()
-  def new(url, start_at_ms \\ 0) do
+  def new(url, how_much_to_skip_ms \\ 0) do
     %{status: 200, body: request_body} = Req.get!(url)
     multivariant_playlist = request_body |> ExM3U8.deserialize_multivariant_playlist!([])
 
@@ -63,7 +63,7 @@ defmodule ExHLS.Client do
       queues: %{audio: Qex.new(), video: Qex.new()},
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil},
-      start_at_ms: start_at_ms,
+      how_much_to_skip_ms: how_much_to_skip_ms,
       base_timestamp_ms: nil,
       end_stream_executed?: false
     }
@@ -94,7 +94,7 @@ defmodule ExHLS.Client do
     {deserialized_media_playlist, base_timestamp_ms} =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
-      |> skip_to_start_at(client.start_at_ms)
+      |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
 
     %{
       client
@@ -129,7 +129,7 @@ defmodule ExHLS.Client do
 
     {deserialized_media_playlist, base_timestamp_ms} =
       ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
-      |> skip_to_start_at(client.start_at_ms)
+      |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
 
     media_base_url = Path.join(client.base_url, Path.dirname(chosen_variant.uri))
 
@@ -325,7 +325,7 @@ defmodule ExHLS.Client do
     end
   end
 
-  defp skip_to_start_at(media_playlist, start_at_ms) do
+  defp skip_to_how_much_to_skip(media_playlist, how_much_to_skip_ms) do
     {discarded, timeline_with_cumulative_duration} =
       Enum.map_reduce(
         media_playlist.timeline,
@@ -341,7 +341,7 @@ defmodule ExHLS.Client do
       )
       |> elem(0)
       |> Enum.split_with(fn
-        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms < start_at_ms
+        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms < how_much_to_skip_ms
         _other -> false
       end)
 
