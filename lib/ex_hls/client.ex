@@ -351,6 +351,7 @@ defmodule ExHLS.Client do
         nil -> 0
         {_discarded_timeline, cumulative_duration_ms} -> cumulative_duration_ms
       end
+      |> round()
 
     timeline = Enum.map(timeline_with_cumulative_duration, &elem(&1, 0))
 
