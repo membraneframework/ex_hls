@@ -22,7 +22,7 @@ defmodule ExHLS.Client do
     :timestamp_offsets,
     :last_timestamps,
     :how_much_to_skip_ms,
-    :base_timestamp_ms,
+    :how_much_truly_skipped_ms,
     :end_stream_executed?
   ]
 
@@ -64,7 +64,7 @@ defmodule ExHLS.Client do
       timestamp_offsets: %{audio: nil, video: nil},
       last_timestamps: %{audio: nil, video: nil},
       how_much_to_skip_ms: how_much_to_skip_ms,
-      base_timestamp_ms: nil,
+      how_much_truly_skipped_ms: nil,
       end_stream_executed?: false
     }
   end
@@ -91,7 +91,7 @@ defmodule ExHLS.Client do
   defp ensure_media_playlist_loaded(client), do: client
 
   defp read_media_playlist_without_variant(%__MODULE__{media_playlist: nil} = client) do
-    {deserialized_media_playlist, base_timestamp_ms} =
+    {deserialized_media_playlist, how_much_truly_skipped_ms} =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
       |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
@@ -100,7 +100,7 @@ defmodule ExHLS.Client do
       client
       | media_playlist: deserialized_media_playlist,
         media_base_url: client.base_url,
-        base_timestamp_ms: base_timestamp_ms
+        how_much_truly_skipped_ms: how_much_truly_skipped_ms
     }
   end
 
@@ -127,7 +127,7 @@ defmodule ExHLS.Client do
 
     media_playlist = Path.join(client.base_url, chosen_variant.uri) |> Req.get!()
 
-    {deserialized_media_playlist, base_timestamp_ms} =
+    {deserialized_media_playlist, how_much_truly_skipped_ms} =
       ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
       |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
 
@@ -137,7 +137,7 @@ defmodule ExHLS.Client do
       client
       | media_playlist: deserialized_media_playlist,
         media_base_url: media_base_url,
-        base_timestamp_ms: base_timestamp_ms
+        how_much_truly_skipped_ms: how_much_truly_skipped_ms
     }
   end
 
@@ -304,7 +304,8 @@ defmodule ExHLS.Client do
     %{
       client
       | demuxing_engine_impl: demuxing_engine_impl,
-        demuxing_engine: demuxing_engine_impl.new(client.base_timestamp_ms)
+        # how_much_truly_skipped_ms is the timestamps offset of the first non-discarded sample
+        demuxing_engine: get_how_much_truly_skipped_ms(client) |> demuxing_engine_impl.new()
     }
   end
 
@@ -345,7 +346,7 @@ defmodule ExHLS.Client do
         _other -> false
       end)
 
-    base_timestamp_ms =
+    how_much_truly_skipped_ms =
       case List.last(discarded) do
         nil -> 0
         {_discarded_timeline, cumulative_duration_ms} -> cumulative_duration_ms
@@ -353,6 +354,18 @@ defmodule ExHLS.Client do
 
     timeline = Enum.map(timeline_with_cumulative_duration, &elem(&1, 0))
 
-    {put_in(media_playlist.timeline, timeline), base_timestamp_ms}
+    {put_in(media_playlist.timeline, timeline), how_much_truly_skipped_ms}
   end
+
+  @spec get_how_much_truly_skipped_ms(client()) :: non_neg_integer() | no_return()
+  def get_how_much_truly_skipped_ms(%{how_much_truly_skipped_ms: nil}) do
+    raise """
+    `how_much_truly_skipped_ms` is not yet available.
+    Please call `read_audio_chunk/1`, `read_video_chunk/1`
+    or `choose_variant/2` before calling this function.
+    """
+  end
+
+  def get_how_much_truly_skipped_ms(%{how_much_truly_skipped_ms: how_much_truly_skipped_ms}),
+    do: how_much_truly_skipped_ms
 end

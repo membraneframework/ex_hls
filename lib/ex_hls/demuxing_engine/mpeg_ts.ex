@@ -14,7 +14,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         }
 
   @impl true
-  def new(_base_timestamp_ms) do
+  # We can ignore handling timestamps_offset_ms since timestamps in the
+  # MPEG-TS container already include global timestamps.
+  def new(_timestamps_offset_ms) do
     demuxer = Demuxer.new()
 
     # we need to explicitly override that `waiting_random_access_indicator` as otherwise Demuxer
