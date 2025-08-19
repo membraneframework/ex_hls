@@ -40,10 +40,9 @@ defmodule ExHLS.Mixfile do
       {:ex_m3u8, "~> 0.15.3"},
       {:req, "~> 0.5.10"},
       {:qex, "~> 0.5.1"},
-      {:membrane_mp4_plugin, "~> 0.35.3"},
+      {:membrane_mp4_plugin, "~> 0.36.0"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
-      # {:mpeg_ts, github: "kim-company/kim_mpeg_ts"},
-      {:mpeg_ts, github: "membraneframework-labs/kim_mpeg_ts", branch: "backport-v1.0.3"},
+      {:mpeg_ts, github: "kim-company/kim_mpeg_ts"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}

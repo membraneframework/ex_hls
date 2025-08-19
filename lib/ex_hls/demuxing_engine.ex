@@ -3,7 +3,7 @@ defmodule ExHLS.DemuxingEngine do
 
   @type t :: any()
 
-  @callback new() :: t()
+  @callback new(base_timestamps_ms :: non_neg_integer()) :: t()
 
   @callback feed!(t(), binary()) :: t()
 
