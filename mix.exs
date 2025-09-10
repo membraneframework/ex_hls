@@ -42,8 +42,6 @@ defmodule ExHLS.Mixfile do
       {:qex, "~> 0.5.1"},
       {:membrane_mp4_plugin, "~> 0.35.3"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
-      # {:mpeg_ts, github: "kim-company/kim_mpeg_ts"},
-      # {:mpeg_ts, github: "membraneframework-labs/kim_mpeg_ts", branch: "backport-v1.0.3"},
       {:mpeg_ts,
        github: "kim-company/kim_mpeg_ts", ref: "ebde017bf639a9d57d068f029f2e43562ae78746"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},

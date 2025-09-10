@@ -119,8 +119,6 @@ defmodule Client.Test do
              tracks_info |> Map.values()
 
     chunks = Client.generate_stream(client) |> Enum.take(10)
-    assert_chunks_are_in_proper_order(chunks)
-
     [video_chunk | _rest_video_chunks] = chunks
 
     assert %{pts_ms: 1480, dts_ms: 1400} = video_chunk
@@ -150,8 +148,6 @@ defmodule Client.Test do
            ] = tracks_info |> Map.values()
 
     chunks = Client.generate_stream(client) |> Enum.take(10)
-    assert_chunks_are_in_proper_order(chunks)
-
     [video_chunk | _rest_video_chunks] = chunks
 
     assert %{pts_ms: 0, dts_ms: 0} = video_chunk
@@ -183,6 +179,7 @@ defmodule Client.Test do
     assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
 
     chunks = Client.generate_stream(client) |> Enum.take(10)
+    assert_chunks_are_in_proper_order(chunks)
 
     video_chunk = chunks |> Enum.find(&(&1.media_type == :video))
 
@@ -229,8 +226,10 @@ defmodule Client.Test do
 
         if chunk.media_type in expected_media_types do
           iteration_state
+          |> put_in([:last_dts, chunk.media_type], chunk.dts_ms)
         else
           iteration_state
+          |> put_in([:last_dts, chunk.media_type], chunk.dts_ms)
           |> put_in([:had_to_end, chunk.media_type], true)
         end
       end)
