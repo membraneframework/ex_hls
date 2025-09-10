@@ -4,7 +4,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
 
   alias Membrane.MP4.Demuxer.CMAF
 
-  @enforce_keys [:demuxer]
+  @enforce_keys [:demuxer, :timestamp_offset_ms]
   defstruct @enforce_keys ++ [tracks_to_chunks: %{}]
 
   @type t :: %__MODULE__{
@@ -13,9 +13,10 @@ defmodule ExHLS.DemuxingEngine.CMAF do
         }
 
   @impl true
-  def new() do
+  def new(timestamp_offset_ms) do
     %__MODULE__{
-      demuxer: CMAF.Engine.new()
+      demuxer: CMAF.Engine.new(),
+      timestamp_offset_ms: timestamp_offset_ms
     }
   end
 
@@ -33,8 +34,8 @@ defmodule ExHLS.DemuxingEngine.CMAF do
         fn %CMAF.Engine.Sample{} = chunk ->
           %ExHLS.Chunk{
             payload: chunk.payload,
-            pts_ms: chunk.pts,
-            dts_ms: chunk.dts,
+            pts_ms: (chunk.pts + demuxing_engine.timestamp_offset_ms) |> round(),
+            dts_ms: (chunk.dts + demuxing_engine.timestamp_offset_ms) |> round(),
             track_id: chunk.track_id
           }
         end

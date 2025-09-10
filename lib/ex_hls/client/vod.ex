@@ -9,6 +9,7 @@ defmodule ExHLS.Client.VOD do
 
   alias ExHLS.Client.Utils
   alias ExHLS.DemuxingEngine
+  alias ExM3U8.Tags.Segment
   alias Membrane.{AAC, H264, RemoteStream}
 
   @enforce_keys [
@@ -20,7 +21,9 @@ defmodule ExHLS.Client.VOD do
     :queues,
     :last_timestamps,
     :end_stream_executed?,
-    :stream_ended_by_media_type
+    :stream_ended_by_media_type,
+    :how_much_to_skip_ms,
+    :skipped_segments_cumulative_duration_ms
   ]
 
   defstruct @enforce_keys
@@ -33,8 +36,8 @@ defmodule ExHLS.Client.VOD do
   By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
   """
 
-  @spec new(String.t(), ExM3U8.MediaPlaylist.t()) :: client()
-  def new(media_playlist_url, media_playlist) do
+  @spec new(String.t(), ExM3U8.MediaPlaylist.t(), non_neg_integer()) :: client()
+  def new(media_playlist_url, media_playlist, how_much_to_skip_ms) do
     :ok = generate_discontinuity_warnings(media_playlist)
 
     last_timestamps = %{audio: %{returned: nil, read: nil}, video: %{returned: nil, read: nil}}
@@ -48,8 +51,53 @@ defmodule ExHLS.Client.VOD do
       queues: %{audio: Qex.new(), video: Qex.new()},
       last_timestamps: last_timestamps,
       end_stream_executed?: false,
-      stream_ended_by_media_type: %{audio: false, video: false}
+      stream_ended_by_media_type: %{audio: false, video: false},
+      how_much_to_skip_ms: how_much_to_skip_ms,
+      skipped_segments_cumulative_duration_ms: nil
     }
+    |> skip_segments()
+  end
+
+  defp skip_segments(client) do
+    {tags_with_segments_cumulative_duration_ms, _total_duration} =
+      client.media_playlist.timeline
+      |> Enum.map_reduce(0, fn
+        %Segment{} = segment, duration_acc ->
+          duration_acc = duration_acc + 1000 * segment.duration
+          {{segment, duration_acc}, duration_acc}
+
+        other_tag, duration_acc ->
+          {{other_tag, duration_acc}, duration_acc}
+      end)
+
+    {remained_tags, max_skipped_segment_end_time} =
+      tags_with_segments_cumulative_duration_ms
+      |> Enum.flat_map_reduce(0, fn
+        {%Segment{}, segment_end_time}, _max_skipped_end_time
+        when segment_end_time <= client.how_much_to_skip_ms ->
+          {[], segment_end_time}
+
+        {%Segment{} = segment, segment_end_time}, max_skipped_end_time
+        when segment_end_time > client.how_much_to_skip_ms ->
+          {[segment], max_skipped_end_time}
+
+        {other_tag, _duration_acc}, max_skipped_end_time ->
+          {[other_tag], max_skipped_end_time}
+      end)
+
+    media_playlist = client.media_playlist |> Map.put(:timeline, remained_tags)
+
+    %{
+      client
+      | media_playlist: media_playlist,
+        skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time)
+    }
+  end
+
+  @spec get_skipped_segments_cumulative_duration_ms(client()) ::
+          {:ok, non_neg_integer()}
+  def get_skipped_segments_cumulative_duration_ms(%__MODULE__{} = client) do
+    {:ok, client.skipped_segments_cumulative_duration_ms}
   end
 
   defp generate_discontinuity_warnings(media_playlist) do
@@ -246,7 +294,7 @@ defmodule ExHLS.Client.VOD do
     %{
       client
       | demuxing_engine_impl: demuxing_engine_impl,
-        demuxing_engine: demuxing_engine_impl.new()
+        demuxing_engine: demuxing_engine_impl.new(client.how_much_to_skip_ms)
     }
   end
 

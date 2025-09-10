@@ -375,7 +375,7 @@ defmodule ExHLS.Client.Live.Reader do
     %{
       state
       | demuxing_engine_impl: demuxing_engine_impl,
-        demuxing_engine: demuxing_engine_impl.new()
+        demuxing_engine: demuxing_engine_impl.new(0)
     }
   end
 

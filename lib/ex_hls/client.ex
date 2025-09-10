@@ -21,7 +21,8 @@ defmodule ExHLS.Client do
     :base_url,
     :vod_client,
     :live_reader,
-    :live_forwarder
+    :live_forwarder,
+    :how_much_to_skip_ms
   ]
 
   defstruct @enforce_keys
@@ -44,12 +45,22 @@ defmodule ExHLS.Client do
   As options, you can pass `:parent_process` to specify the parent process that will be
   allowed to read media chunks when the HLS stream is in the Live mode.
   Parent process defaults to the process that created the client.
+
+  You can also pass `:how_much_to_skip_ms` option to specify how many milliseconds
+  of the beginning of the stream should be skipped. This option is only supported
+  when the HLS stream is in the VoD mode. Defaults to `0`.
+  Note that there is no guarantee that exactly the specified amount of time will be skipped.
+
+  The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
+  To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
+  function.
   """
-  @spec new(String.t(), parent_process: pid()) :: client()
+  @spec new(String.t(), parent_process: pid(), how_much_to_skip_ms: non_neg_integer()) :: client()
   def new(url, opts \\ []) do
-    [parent_process: parent_process] =
+    %{parent_process: parent_process, how_much_to_skip_ms: how_much_to_skip_ms} =
       opts
-      |> Keyword.validate!(parent_process: self())
+      |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0)
+      |> Map.new()
 
     root_playlist_string = Utils.req_get_or_open_file!(url)
     multivariant_playlist = root_playlist_string |> ExM3U8.deserialize_multivariant_playlist!([])
@@ -65,7 +76,8 @@ defmodule ExHLS.Client do
       base_url: Path.dirname(url),
       vod_client: nil,
       live_reader: nil,
-      live_forwarder: nil
+      live_forwarder: nil,
+      how_much_to_skip_ms: how_much_to_skip_ms
     }
     |> maybe_resolve_hls_mode()
   end
@@ -91,13 +103,26 @@ defmodule ExHLS.Client do
     if client.media_playlist.info.end_list? do
       Logger.info("[#{inspect(__MODULE__)}] HLS stream type is VoD.")
 
-      vod_client = ExHLS.Client.VOD.new(client.media_playlist_url, client.media_playlist)
+      vod_client =
+        ExHLS.Client.VOD.new(
+          client.media_playlist_url,
+          client.media_playlist,
+          client.how_much_to_skip_ms
+        )
+
       %{client | vod_client: vod_client, hls_mode: :vod}
     else
       Logger.info("""
       [#{inspect(__MODULE__)}] HLS stream type is Live. Reading multimedia chunks will be \
       available only from the parent process (#{inspect(client.parent_process)}).
       """)
+
+      if client.how_much_to_skip_ms > 0 do
+        raise """
+        `how_much_to_skip_ms` option was set to #{inspect(client.how_much_to_skip_ms)},
+        but using it is not supported when HLS in the Live mode.
+        """
+      end
 
       {:ok, forwarder} = ExHLS.Client.Live.Forwarder.start_link(client.parent_process)
       {:ok, reader} = ExHLS.Client.Live.Reader.start_link(client.media_playlist_url, forwarder)
@@ -195,6 +220,17 @@ defmodule ExHLS.Client do
       :live ->
         tracks_info = Live.Forwarder.request_tracks_info(client.live_forwarder)
         {:ok, tracks_info, client}
+    end
+  end
+
+  @spec get_skipped_segments_cumulative_duration_ms(client()) ::
+          {:ok, non_neg_integer()} | {:error, reason :: any()}
+  def get_skipped_segments_cumulative_duration_ms(client) do
+    :ok = ensure_hls_mode_resolved!(client)
+
+    case client.hls_mode do
+      :vod -> VOD.get_skipped_segments_cumulative_duration_ms(client.vod_client)
+      :live -> {:error, "Skipping segments is not supported in HLS Live mode"}
     end
   end
 end
