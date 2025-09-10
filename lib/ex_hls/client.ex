@@ -6,24 +6,22 @@ defmodule ExHLS.Client do
 
   use Bunch.Access
 
-  alias ExHLS.DemuxingEngine
-  alias Membrane.{AAC, H264, RemoteStream}
+  require Logger
+
+  alias __MODULE__.{Live, Utils, VOD}
 
   @enforce_keys [
+    :parent_process,
+    :hls_mode,
     :media_playlist,
-    :media_base_url,
+    :media_playlist_url,
     :multivariant_playlist,
+    :root_playlist_url,
     :root_playlist_string,
     :base_url,
-    :demuxing_engine_impl,
-    :demuxing_engine,
-    :media_types,
-    :queues,
-    :timestamp_offsets,
-    :last_timestamps,
-    :how_much_to_skip_ms,
-    :how_much_truly_skipped_ms,
-    :end_stream_executed?
+    :vod_client,
+    :live_reader,
+    :live_forwarder
   ]
 
   defstruct @enforce_keys
@@ -41,66 +39,95 @@ defmodule ExHLS.Client do
         }
 
   @doc """
-  Starts the ExHLS client with the given URL and demuxing engine implementation.
+  Starts the ExHLS client with the given URL.
 
-  By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
+  As options, you can pass `:parent_process` to specify the parent process that will be
+  allowed to read media chunks when the HLS stream is in the Live mode.
+  Parent process defaults to the process that created the client.
   """
+  @spec new(String.t(), parent_process: pid()) :: client()
+  def new(url, opts \\ []) do
+    [parent_process: parent_process] =
+      opts
+      |> Keyword.validate!(parent_process: self())
 
-  @spec new(String.t(), non_neg_integer()) :: client()
-  def new(url, how_much_to_skip_ms \\ 0) do
-    %{status: 200, body: request_body} = Req.get!(url)
-    multivariant_playlist = request_body |> ExM3U8.deserialize_multivariant_playlist!([])
+    root_playlist_string = Utils.req_get_or_open_file!(url)
+    multivariant_playlist = root_playlist_string |> ExM3U8.deserialize_multivariant_playlist!([])
 
     %__MODULE__{
+      parent_process: parent_process,
+      hls_mode: nil,
       media_playlist: nil,
-      media_base_url: nil,
+      media_playlist_url: nil,
       multivariant_playlist: multivariant_playlist,
-      root_playlist_string: request_body,
+      root_playlist_url: url,
+      root_playlist_string: root_playlist_string,
       base_url: Path.dirname(url),
-      demuxing_engine_impl: nil,
-      demuxing_engine: nil,
-      media_types: [:audio, :video],
-      queues: %{audio: Qex.new(), video: Qex.new()},
-      timestamp_offsets: %{audio: nil, video: nil},
-      last_timestamps: %{audio: nil, video: nil},
-      how_much_to_skip_ms: how_much_to_skip_ms,
-      how_much_truly_skipped_ms: nil,
-      end_stream_executed?: false
+      vod_client: nil,
+      live_reader: nil,
+      live_forwarder: nil
     }
+    |> maybe_resolve_hls_mode()
   end
 
-  defp ensure_media_playlist_loaded(%__MODULE__{media_playlist: nil} = client) do
-    get_variants(client)
-    |> Map.to_list()
-    |> case do
+  defp maybe_resolve_hls_mode(client) do
+    case get_variants(client) |> Map.to_list() do
       [] ->
-        read_media_playlist_without_variant(client)
+        client
+        |> treat_root_playlist_as_media_playlist()
+        |> do_resolve_hls_mode()
 
       [{variant_id, _variant}] ->
-        choose_variant(client, variant_id)
+        client
+        |> do_choose_variant(variant_id)
+        |> do_resolve_hls_mode()
 
       _many_variants ->
-        raise """
-        If there are available variants, you have to choose one of them using \
-        `choose_variant/2` function before reading chunks. Available variants:
-        #{get_variants(client) |> inspect(limit: :infinity, pretty: true)}
-        """
+        client
     end
   end
 
-  defp ensure_media_playlist_loaded(client), do: client
+  defp do_resolve_hls_mode(%{hls_mode: nil} = client) do
+    if client.media_playlist.info.end_list? do
+      Logger.info("[#{inspect(__MODULE__)}] HLS stream type is VoD.")
 
-  defp read_media_playlist_without_variant(%__MODULE__{media_playlist: nil} = client) do
-    {deserialized_media_playlist, how_much_truly_skipped_ms} =
+      vod_client = ExHLS.Client.VOD.new(client.media_playlist_url, client.media_playlist)
+      %{client | vod_client: vod_client, hls_mode: :vod}
+    else
+      Logger.info("""
+      [#{inspect(__MODULE__)}] HLS stream type is Live. Reading multimedia chunks will be \
+      available only from the parent process (#{inspect(client.parent_process)}).
+      """)
+
+      {:ok, forwarder} = ExHLS.Client.Live.Forwarder.start_link(client.parent_process)
+      {:ok, reader} = ExHLS.Client.Live.Reader.start_link(client.media_playlist_url, forwarder)
+      %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}
+    end
+  end
+
+  defp ensure_hls_mode_resolved!(%__MODULE__{hls_mode: nil} = client) do
+    # the error message is about choosing a variant, while the function name is
+    # about resolving the HLS mode, but it is done this way because the HLS mode
+    # might be unresolved only due to not resolving the variant
+
+    raise """
+    If there are available variants, you have to choose one of them using \
+    `choose_variant/2` function before reading chunks. Available variants: \
+    #{get_variants(client) |> inspect(limit: :infinity, pretty: true)}
+    """
+  end
+
+  defp ensure_hls_mode_resolved!(%__MODULE__{}), do: :ok
+
+  defp treat_root_playlist_as_media_playlist(%__MODULE__{media_playlist: nil} = client) do
+    media_playlist =
       client.root_playlist_string
       |> ExM3U8.deserialize_media_playlist!([])
-      |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
 
     %{
       client
-      | media_playlist: deserialized_media_playlist,
-        media_base_url: client.base_url,
-        how_much_truly_skipped_ms: how_much_truly_skipped_ms
+      | media_playlist: media_playlist,
+        media_playlist_url: client.root_playlist_url
     }
   end
 
@@ -121,89 +148,34 @@ defmodule ExHLS.Client do
 
   @spec choose_variant(client(), String.t()) :: client()
   def choose_variant(%__MODULE__{} = client, variant_id) do
-    chosen_variant =
-      get_variants(client)
-      |> Map.fetch!(variant_id)
+    client
+    |> do_choose_variant(variant_id)
+    |> do_resolve_hls_mode()
+  end
 
-    media_playlist = Path.join(client.base_url, chosen_variant.uri) |> Req.get!()
+  defp do_choose_variant(%__MODULE__{} = client, variant_id) do
+    chosen_variant = get_variants(client) |> Map.fetch!(variant_id)
+    media_playlist_url = Path.join(client.base_url, chosen_variant.uri)
 
-    {deserialized_media_playlist, how_much_truly_skipped_ms} =
-      ExM3U8.deserialize_media_playlist!(media_playlist.body, [])
-      |> skip_to_how_much_to_skip(client.how_much_to_skip_ms)
-
-    media_base_url = Path.join(client.base_url, Path.dirname(chosen_variant.uri))
+    media_playlist =
+      media_playlist_url
+      |> Utils.req_get_or_open_file!()
+      |> ExM3U8.deserialize_media_playlist!([])
 
     %{
       client
-      | media_playlist: deserialized_media_playlist,
-        media_base_url: media_base_url,
-        how_much_truly_skipped_ms: how_much_truly_skipped_ms
+      | media_playlist: media_playlist,
+        media_playlist_url: media_playlist_url
     }
   end
 
-  @spec read_video_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
-  def read_video_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :video)
+  @spec generate_stream(client()) :: Enumerable.t(ExHLS.Chunk.t())
+  def generate_stream(%__MODULE__{} = client) do
+    :ok = ensure_hls_mode_resolved!(client)
 
-  @spec read_audio_chunk(client()) :: {ExHLS.Chunk.t() | :end_of_stream, client()}
-  def read_audio_chunk(%__MODULE__{} = client), do: pop_queue_or_do_read_chunk(client, :audio)
-
-  defp pop_queue_or_do_read_chunk(client, media_type) do
-    client.queues[media_type]
-    |> Qex.pop()
-    |> case do
-      {{:value, chunk}, queue} ->
-        client = client |> put_in([:queues, media_type], queue)
-        {chunk, client}
-
-      {:empty, _queue} ->
-        do_read_chunk(client, media_type)
-    end
-  end
-
-  @spec do_read_chunk(client(), :audio | :video) ::
-          {ExHLS.Chunk.t() | :end_of_stream | {:error, atom()}, client()}
-  defp do_read_chunk(client, media_type) do
-    client = ensure_media_playlist_loaded(client)
-
-    with impl when impl != nil <- client.demuxing_engine_impl,
-         {:ok, track_id} <- get_track_id(client, media_type),
-         {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
-      client =
-        with %{timestamp_offsets: %{^media_type => nil}} <- client do
-          client
-          |> put_in([:timestamp_offsets, media_type], chunk.dts_ms)
-        end
-        |> put_in([:last_timestamps, media_type], chunk.dts_ms)
-        |> put_in([:demuxing_engine], demuxing_engine)
-
-      {chunk, client}
-    else
-      # returned from the second match
-      :error ->
-        client = %{client | media_types: client.media_types -- [media_type]}
-        {{:error, :no_track_for_media_type}, client}
-
-      # returned from the first or the third match
-      other ->
-        case other do
-          {:error, _reason, demuxing_engine} -> %{client | demuxing_engine: demuxing_engine}
-          nil -> client
-        end
-        |> download_chunk()
-        |> case do
-          {:ok, client} ->
-            do_read_chunk(client, media_type)
-
-          {:error, :no_more_segments, client} when not client.end_stream_executed? ->
-            # after calling `end_stream/1` there is a chance that `pop_chunk/2` will flush
-            # some remaining data
-            %{client | end_stream_executed?: true}
-            |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
-            |> do_read_chunk(media_type)
-
-          {:error, :no_more_segments, client} when client.end_stream_executed? ->
-            {:end_of_stream, client}
-        end
+    case client.hls_mode do
+      :vod -> VOD.generate_stream(client.vod_client)
+      :live -> Live.Forwarder.generate_stream(client.live_forwarder)
     end
   end
 
@@ -211,162 +183,18 @@ defmodule ExHLS.Client do
           {:ok, %{optional(integer()) => struct()}, client()}
           | {:error, reason :: any(), client()}
   def get_tracks_info(%__MODULE__{} = client) do
-    with impl when impl != nil <- client.demuxing_engine_impl,
-         {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
-      {:ok, tracks_info, client}
-    else
-      _other ->
-        media_type = media_type_with_lower_ts(client)
-        {chunk_eos_or_error, client} = do_read_chunk(client, media_type)
+    :ok = ensure_hls_mode_resolved!(client)
 
-        with %ExHLS.Chunk{} = chunk <- chunk_eos_or_error do
-          client
-          |> update_in([:queues, media_type], &Qex.push(&1, chunk))
-          |> get_tracks_info()
-        else
-          :end_of_stream ->
-            {:error, "end of stream reached, but tracks info is not available", client}
+    case client.hls_mode do
+      :vod ->
+        {ok_or_error, value_or_reason, vod_client} =
+          VOD.get_tracks_info(client.vod_client)
 
-          {:error, :no_track_for_media_type} when client.media_types != [] ->
-            client |> get_tracks_info()
+        {ok_or_error, value_or_reason, %{client | vod_client: vod_client}}
 
-          {:error, :no_track_for_media_type} when client.media_types == [] ->
-            {:error, "no supported media types in HLS stream", client}
-        end
+      :live ->
+        tracks_info = Live.Forwarder.request_tracks_info(client.live_forwarder)
+        {:ok, tracks_info, client}
     end
   end
-
-  defp media_type_with_lower_ts(client) do
-    cond do
-      client.timestamp_offsets.audio == nil and :audio in client.media_types ->
-        :audio
-
-      client.timestamp_offsets.video == nil and :video in client.media_types ->
-        :video
-
-      true ->
-        client.media_types
-        |> Enum.min_by(fn media_type ->
-          client.last_timestamps[media_type] - client.timestamp_offsets[media_type]
-        end)
-    end
-  end
-
-  defp download_chunk(client) do
-    client = ensure_media_playlist_loaded(client)
-
-    case client.media_playlist.timeline do
-      [%{uri: segment_uri} | rest] ->
-        client =
-          with %{demuxing_engine: nil} <- client do
-            resolve_demuxing_engine(segment_uri, client)
-          end
-
-        request_result =
-          Path.join(client.media_base_url, segment_uri)
-          |> Req.get!()
-
-        demuxing_engine =
-          client.demuxing_engine
-          |> client.demuxing_engine_impl.feed!(request_result.body)
-
-        client =
-          %{
-            client
-            | demuxing_engine: demuxing_engine,
-              media_playlist: %{client.media_playlist | timeline: rest}
-          }
-
-        {:ok, client}
-
-      [_other_tag | rest] ->
-        %{client | media_playlist: %{client.media_playlist | timeline: rest}}
-        |> download_chunk()
-
-      [] ->
-        client =
-          client
-          |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
-
-        {:error, :no_more_segments, client}
-    end
-  end
-
-  defp resolve_demuxing_engine(segment_uri, %{demuxing_engine: nil} = client) do
-    demuxing_engine_impl =
-      case Path.extname(segment_uri) do
-        ".ts" -> DemuxingEngine.MPEGTS
-        ".m4s" -> DemuxingEngine.CMAF
-        ".mp4" -> DemuxingEngine.CMAF
-        _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
-      end
-
-    %{
-      client
-      | demuxing_engine_impl: demuxing_engine_impl,
-        # how_much_truly_skipped_ms is the timestamps offset of the first non-discarded sample
-        demuxing_engine: get_how_much_truly_skipped_ms(client) |> demuxing_engine_impl.new()
-    }
-  end
-
-  defp get_track_id(client, type) when type in [:audio, :video] do
-    impl = client.demuxing_engine_impl
-
-    with {:ok, tracks_info} <- client.demuxing_engine |> impl.get_tracks_info() do
-      tracks_info
-      |> Enum.find_value(:error, fn
-        {id, %AAC{}} when type == :audio -> {:ok, id}
-        {id, %RemoteStream{content_format: AAC}} when type == :audio -> {:ok, id}
-        {id, %H264{}} when type == :video -> {:ok, id}
-        {id, %RemoteStream{content_format: H264}} when type == :video -> {:ok, id}
-        _different_type -> false
-      end)
-    else
-      {:error, _reason} -> :error
-    end
-  end
-
-  defp skip_to_how_much_to_skip(media_playlist, how_much_to_skip_ms) do
-    {discarded, timeline_with_cumulative_duration} =
-      Enum.map_reduce(
-        media_playlist.timeline,
-        0,
-        fn
-          %ExM3U8.Tags.Segment{} = chunk, cumulative_duration_ms ->
-            chunk_end_ms = cumulative_duration_ms + 1000 * chunk.duration
-            {{chunk, chunk_end_ms}, chunk_end_ms}
-
-          other_tag, cumulative_duration_ms ->
-            {{other_tag, cumulative_duration_ms}, cumulative_duration_ms}
-        end
-      )
-      |> elem(0)
-      |> Enum.split_with(fn
-        {%ExM3U8.Tags.Segment{}, chunk_end_ms} -> chunk_end_ms < how_much_to_skip_ms
-        _other -> false
-      end)
-
-    how_much_truly_skipped_ms =
-      case List.last(discarded) do
-        nil -> 0
-        {_discarded_timeline, cumulative_duration_ms} -> cumulative_duration_ms
-      end
-      |> round()
-
-    timeline = Enum.map(timeline_with_cumulative_duration, &elem(&1, 0))
-
-    {put_in(media_playlist.timeline, timeline), how_much_truly_skipped_ms}
-  end
-
-  @spec get_how_much_truly_skipped_ms(client()) :: non_neg_integer() | no_return()
-  def get_how_much_truly_skipped_ms(%{how_much_truly_skipped_ms: nil}) do
-    raise """
-    `how_much_truly_skipped_ms` is not yet available.
-    Please call `read_audio_chunk/1`, `read_video_chunk/1`
-    or `choose_variant/2` before calling this function.
-    """
-  end
-
-  def get_how_much_truly_skipped_ms(%{how_much_truly_skipped_ms: how_much_truly_skipped_ms}),
-    do: how_much_truly_skipped_ms
 end

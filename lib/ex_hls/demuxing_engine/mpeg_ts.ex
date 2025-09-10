@@ -14,9 +14,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         }
 
   @impl true
-  # We can ignore handling timestamps_offset_ms since timestamps in the
-  # MPEG-TS container already include global timestamps.
-  def new(_timestamps_offset_ms) do
+  def new() do
     demuxer = Demuxer.new()
 
     # we need to explicitly override that `waiting_random_access_indicator` as otherwise Demuxer
@@ -46,19 +44,10 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
             [{id, %RemoteStream{content_format: H264}}]
 
           {id, unsupported_stream_info} ->
-            unsupported_streams = Process.get(:unsupported_streams) || MapSet.new()
-
-            if unsupported_stream_info.stream_type not in unsupported_streams do
-              Logger.debug("""
-              #{__MODULE__ |> inspect()}: dropping unsupported stream with id #{id |> inspect()}.\
-              Stream info: #{unsupported_stream_info |> inspect(pretty: true)}
-              """)
-
-              unsupported_streams =
-                MapSet.put(unsupported_streams, unsupported_stream_info.stream_type)
-
-              Process.put(:unsupported_streams, unsupported_streams)
-            end
+            Logger.warning("""
+            #{__MODULE__ |> inspect()}: dropping unsupported stream with id #{id |> inspect()}.\
+            Stream info: #{unsupported_stream_info |> inspect(pretty: true)}
+            """)
 
             []
         end)

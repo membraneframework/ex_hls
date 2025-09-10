@@ -11,6 +11,7 @@ defmodule Client.Test do
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
 
   describe "if client reads video and audio chunks of the HLS" do
+    @tag :a
     test "(MPEGTS) stream" do
       client = Client.new(@mpegts_url)
 
@@ -30,7 +31,13 @@ defmodule Client.Test do
       assert %RemoteStream{content_format: AAC, type: :bytestream} in tracks_info
       assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
 
-      {video_chunk, client} = client |> Client.read_video_chunk()
+      chunks = Client.generate_stream(client) |> Enum.take(10)
+      assert_chunks_are_in_proper_order(chunks)
+
+      %{video: video_chunks, audio: audio_chunks} =
+        chunks |> Enum.group_by(& &1.media_type)
+
+      [video_chunk | _rest_video_chunks] = video_chunks
 
       assert %{pts_ms: 10_033, dts_ms: 10_000} = video_chunk
       assert byte_size(video_chunk.payload) == 1048
@@ -39,8 +46,7 @@ defmodule Client.Test do
                0, 0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0,
                1>> <> _rest = video_chunk.payload
 
-      {audio_chunk, _client} = Client.read_audio_chunk(client)
-
+      [audio_chunk | _rest_audio_chunks] = audio_chunks
       assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_chunk
       assert byte_size(audio_chunk.payload) == 6154
 
@@ -49,6 +55,7 @@ defmodule Client.Test do
                33, 70, 254, 208, 221, 101, 200, 21, 97, 0>> <> _rest = audio_chunk.payload
     end
 
+    @tag :b
     test "(fMP4) stream" do
       client = Client.new(@fmp4_url)
 
@@ -76,7 +83,13 @@ defmodule Client.Test do
                config: {:esds, _binary}
              } = tracks_info |> Enum.find(&match?(%AAC{}, &1))
 
-      {video_chunk, client} = Client.read_video_chunk(client)
+      chunks = Client.generate_stream(client) |> Enum.take(10)
+      assert_chunks_are_in_proper_order(chunks)
+
+      %{video: video_chunks, audio: audio_chunks} =
+        chunks |> Enum.group_by(& &1.media_type)
+
+      [video_chunk | _rest_video_chunks] = video_chunks
 
       assert %{pts_ms: 0, dts_ms: 0} = video_chunk
       assert byte_size(video_chunk.payload) == 775
@@ -85,7 +98,7 @@ defmodule Client.Test do
                216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114, 101, 32, 49,
                54, 52, 32, 114, 51, 49, 48, 56, 32, 51, 49, 101>> <> _rest = video_chunk.payload
 
-      {first_audio_chunk, client} = Client.read_audio_chunk(client)
+      [first_audio_chunk, second_audio_chunk | _rest_audio_chunks] = audio_chunks
 
       assert %{pts_ms: 0, dts_ms: 0} = first_audio_chunk
 
@@ -93,13 +106,12 @@ defmodule Client.Test do
                <<220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49, 48, 48, 0, 66, 32, 8, 193, 24,
                  56>>
 
-      {second_audio_chunk, _client} = Client.read_audio_chunk(client)
-
       assert %{pts_ms: 23, dts_ms: 23} = second_audio_chunk
       assert second_audio_chunk.payload == <<33, 16, 4, 96, 140, 28>>
     end
   end
 
+  @tag :c
   test "(MPEGTS) stream with only video" do
     client = Client.new(@mpegts_only_video_url)
 
@@ -109,7 +121,10 @@ defmodule Client.Test do
     assert [%Membrane.RemoteStream{content_format: Membrane.H264, type: :bytestream}] =
              tracks_info |> Map.values()
 
-    {video_chunk, _client} = Client.read_video_chunk(client)
+    chunks = Client.generate_stream(client) |> Enum.take(10)
+    assert_chunks_are_in_proper_order(chunks)
+
+    [video_chunk | _rest_video_chunks] = chunks
 
     assert %{pts_ms: 1480, dts_ms: 1400} = video_chunk
     assert byte_size(video_chunk.payload) == 822
@@ -121,6 +136,7 @@ defmodule Client.Test do
     assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
   end
 
+  @tag :d
   test "(fMP4) stream with only video" do
     client = Client.new(@fmp4_only_video_url)
 
@@ -137,7 +153,10 @@ defmodule Client.Test do
              }
            ] = tracks_info |> Map.values()
 
-    {video_chunk, _client} = Client.read_video_chunk(client)
+    chunks = Client.generate_stream(client) |> Enum.take(10)
+    assert_chunks_are_in_proper_order(chunks)
+
+    [video_chunk | _rest_video_chunks] = chunks
 
     assert %{pts_ms: 0, dts_ms: 0} = video_chunk
     assert byte_size(video_chunk.payload) == 823
@@ -147,45 +166,35 @@ defmodule Client.Test do
              114, 101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
   end
 
-  test "(MPEGTS) stream with how_much_to_skip_ms" do
-    how_much_to_skip_ms = 44_000
-    client = Client.new(@mpegts_url, how_much_to_skip_ms)
+  defp assert_chunks_are_in_proper_order(chunks) do
+    iteration_state = %{
+      last_dts: %{audio: nil, video: nil},
+      had_to_end: %{audio: false, video: false}
+    }
 
-    variant_720 =
-      Client.get_variants(client)
-      |> Map.values()
-      |> Enum.find(&(&1.resolution == {1280, 720}))
+    _final_iteration_state =
+      chunks
+      |> Enum.reduce(iteration_state, fn chunk, iteration_state ->
+        assert not iteration_state.had_to_end[chunk.media_type]
 
-    assert variant_720 != nil
+        expected_media_types =
+          case iteration_state.last_dts do
+            %{audio: nil, video: nil} -> [:audio, :video]
+            %{audio: nil, video: _video_dts} -> [:audio]
+            %{audio: _audio_dts, video: nil} -> [:video]
+            %{audio: audio_dts, video: video_dts} when audio_dts < video_dts -> [:audio]
+            %{audio: audio_dts, video: video_dts} when audio_dts > video_dts -> [:video]
+            %{audio: audio_dts, video: video_dts} when audio_dts == video_dts -> [:audio, :video]
+          end
 
-    client = client |> Client.choose_variant(variant_720.id)
-    {:ok, tracks_info, client} = Client.get_tracks_info(client)
+        if chunk.media_type in expected_media_types do
+          iteration_state
+        else
+          iteration_state
+          |> put_in([:had_to_end, chunk.media_type], true)
+        end
+      end)
 
-    tracks_info = tracks_info |> Map.values()
-
-    assert tracks_info |> length() == 2
-    assert %RemoteStream{content_format: AAC, type: :bytestream} in tracks_info
-    assert %RemoteStream{content_format: H264, type: :bytestream} in tracks_info
-
-    {video_chunk, client} = client |> Client.read_video_chunk()
-
-    # segments in the fixture are 10s long and
-    # the timestamps offset is 10s, so the first
-    # video pts after skipping initial 44 seconds should be div(10+44, 10) = 50s
-    assert %{pts_ms: 50_033, dts_ms: 50_000} = video_chunk
-    assert byte_size(video_chunk.payload) == 135_298
-
-    assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16, 0,
-             0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1, 104, 233, 121, 203, 34,
-             192, 0, 0, 1, 101, 136>> <> _rest = video_chunk.payload
-
-    {audio_chunk, _client} = Client.read_audio_chunk(client)
-
-    assert %{pts_ms: 50_018, dts_ms: 50_018} = audio_chunk
-    assert byte_size(audio_chunk.payload) == 6020
-
-    assert <<255, 241, 80, 128, 47, 63, 252, 33, 10, 204, 43, 253, 251, 213, 30, 152, 129, 48, 80,
-             38, 22, 18, 5, 130, 129, 113, 34, 92, 36, 20, 25, 9, 2, 193, 64, 144, 68, 36, 17, 75,
-             215, 198, 77, 184, 229, 170, 157, 115, 169, 223>> <> _rest = audio_chunk.payload
+    :ok
   end
 end
