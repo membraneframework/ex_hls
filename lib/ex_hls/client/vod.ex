@@ -193,7 +193,8 @@ defmodule ExHLS.Client.VOD do
 
         {chunk, client}
 
-      {:end_of_stream, client} ->
+      {error_or_eos, client}
+      when error_or_eos in [:end_of_stream, {:error, :no_track_for_media_type}] ->
         halt_stream? =
           client.media_types
           |> Enum.all?(&client.stream_ended_by_media_type[&1])
