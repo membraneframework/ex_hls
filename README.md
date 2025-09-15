@@ -23,12 +23,12 @@ end
 ## Usage
 
 To read HLS stream from the `.m3u8 playlist`, start the client with:
-```
+```elixir
 client = ExHLS.Client.new(<URI of the .m3u8 playlist>)
 ```
 
 Then you can inspect the variants available in your playlist:
-```
+```elixir
 ExHLS.Client.get_variants(client)
 # Returns
 # %{
@@ -47,15 +47,15 @@ ExHLS.Client.get_variants(client)
 ```
 
 If there are multiple variants available, you need to choose one of them with:
-```
+```elixir
 ExHLS.Client.choose_variant(<id>)
 ```
 where the id is the `id` field of the entry returned by `ExHLS.Client.get_variants/1`.
 
 Now you can start reading media with the following functions:
-```
-{video_chunk, client} = Client.read_video_chunk(client)
-{audio_chunk, client} = Client.read_audio_chunk(client)
+```elixir
+{video_chunk, client} = ExHLS.Client.read_video_chunk(client)
+{audio_chunk, client} = ExHLS.Client.read_audio_chunk(client)
 ```
 
 ## Copyright and License
