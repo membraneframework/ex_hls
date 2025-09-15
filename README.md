@@ -49,7 +49,7 @@ If there are multiple variants available, you need to choose one of them with:
 ```elixir
 ExHLS.Client.choose_variant(<id>)
 ```
-where the id is the `id` field of the entry returned by `ExHLS.Client.get_variants/1`.
+where `<id>` is the `id` field of the entry returned by `ExHLS.Client.get_variants/1`.
 
 Now you can start reading media with the following functions:
 ```elixir
