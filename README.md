@@ -30,19 +30,19 @@ client = ExHLS.Client.new(<URI of the .m3u8 playlist>)
 Then you can inspect the variants available in your playlist:
 ```elixir
 ExHLS.Client.get_variants(client)
-# Returns
-# %{
-#  0 => %{
-#    id: 0,
-#    name: "720",
-#    uri: "url_0/193039199_mp4_h264_aac_hd_7.m3u8",
-#    codecs: "mp4a.40.2,avc1.64001f",
-#    bandwidth: 2149280,
-#    resolution: {1280, 720},
-#    frame_rate: nil
-#  },
-#  ...
-# }
+# Returns:
+#   %{
+#     0 => %{
+#       id: 0,
+#       name: "720",
+#       uri: "url_0/193039199_mp4_h264_aac_hd_7.m3u8",
+#       codecs: "mp4a.40.2,avc1.64001f",
+#       bandwidth: 2149280,
+#       resolution: {1280, 720},
+#       frame_rate: nil
+#     },
+#     ...
+#   }
 #
 ```
 
