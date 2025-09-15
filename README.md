@@ -4,7 +4,7 @@
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/ex_hls)
 [![CircleCI](https://circleci.com/gh/membraneframework/ex_hls.svg?style=svg)](https://circleci.com/gh/membraneframework/ex_hls)
 
-This repository contains ExHLS - an Elixir package for handling HLS streams
+This repository contains ExHLS - an Elixir package for handling HLS streams.
 
 It's a part of the [Membrane Framework](https://membrane.stream).
 
