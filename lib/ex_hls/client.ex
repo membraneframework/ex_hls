@@ -49,8 +49,8 @@ defmodule ExHLS.Client do
   You can also pass `:how_much_to_skip_ms` option to specify how many milliseconds
   of the beginning of the stream should be skipped. This option is only supported
   when the HLS stream is in the VoD mode. Defaults to `0`.
+  
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
-
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
   To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
   function.
