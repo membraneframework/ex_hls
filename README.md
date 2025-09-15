@@ -41,6 +41,8 @@ ExHLS.Client.get_variants(client)
 #    resolution: {1280, 720},
 #    frame_rate: nil
 #  },
+#  ...
+# }
 #
 ```
 
