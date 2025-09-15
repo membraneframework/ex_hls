@@ -24,14 +24,13 @@ end
 
 To read HLS stream from the `.m3u8 playlist`, start the client with:
 ```
-alias ExHLS.Client
-
-client = Client.new(<URI of the .m3u8 playlist>)
+client = ExHLS.Client.new(<URI of the .m3u8 playlist>)
 ```
 
 Then you can inspect the variants available in your playlist:
 ```
-Client.get_variants(client)
+ExHLS.Client.get_variants(client)
+# Returns
 # %{
 #  0 => %{
 #    id: 0,
@@ -47,8 +46,9 @@ Client.get_variants(client)
 
 If there are multiple variants available, you need to choose one of them with:
 ```
-Client.choose_variant(<id>)
+ExHLS.Client.choose_variant(<id>)
 ```
+where the id is the `id` field of the entry returned by `ExHLS.Client.get_variants/1`.
 
 Now you can start reading media with the following functions:
 ```
