@@ -43,7 +43,6 @@ ExHLS.Client.get_variants(client)
 #     },
 #     ...
 #   }
-#
 ```
 
 If there are multiple variants available, you need to choose one of them with:
