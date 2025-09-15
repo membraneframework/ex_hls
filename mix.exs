@@ -40,7 +40,7 @@ defmodule ExHLS.Mixfile do
       {:ex_m3u8, "~> 0.15.3"},
       {:req, "~> 0.5.10"},
       {:qex, "~> 0.5.1"},
-      {:membrane_mp4_plugin, "~> 0.35.3"},
+      {:membrane_mp4_plugin, "~> 0.36.0"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
       {:mpeg_ts,
        github: "kim-company/kim_mpeg_ts", ref: "ebde017bf639a9d57d068f029f2e43562ae78746"},

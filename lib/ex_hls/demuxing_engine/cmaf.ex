@@ -31,7 +31,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
       chunks
       |> Enum.group_by(
         fn chunk -> chunk.track_id end,
-        fn %CMAF.Engine.Sample{} = chunk ->
+        fn %Membrane.MP4.Demuxer.Sample{} = chunk ->
           %ExHLS.Chunk{
             payload: chunk.payload,
             pts_ms: (chunk.pts + demuxing_engine.timestamp_offset_ms) |> round(),
