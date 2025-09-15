@@ -15,14 +15,46 @@ The package can be installed by adding `ex_hls` to your list of dependencies in 
 ```elixir
 def deps do
   [
-    {:ex_hls, "~> 0.1.0"}
+    {:ex_hls, "~> 0.0.1"}
   ]
 end
 ```
 
 ## Usage
 
-TODO
+To read HLS stream from the `.m3u8 playlist`, start the client with:
+```
+alias ExHLS.Client
+
+client = Client.new(<URI of the .m3u8 playlist>)
+```
+
+Then you can inspect the variants available in your playlist:
+```
+Client.get_variants(client)
+# %{
+#  0 => %{
+#    id: 0,
+#    name: "720",
+#    uri: "url_0/193039199_mp4_h264_aac_hd_7.m3u8",
+#    codecs: "mp4a.40.2,avc1.64001f",
+#    bandwidth: 2149280,
+#    resolution: {1280, 720},
+#    frame_rate: nil
+#  },
+#
+```
+
+If there are multiple variants available, you need to choose one of them with:
+```
+Client.choose_variant(<id>)
+```
+
+Now you can start reading media with the following functions:
+```
+{video_chunk, client} = Client.read_video_chunk(client)
+{audio_chunk, client} = Client.read_audio_chunk(client)
+```
 
 ## Copyright and License
 
