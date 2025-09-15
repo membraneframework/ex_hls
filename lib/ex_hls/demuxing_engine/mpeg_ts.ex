@@ -47,16 +47,16 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
             [{id, %RemoteStream{content_format: H264}}]
 
           {id, unsupported_stream_info} ->
-            unsupported_streams = Process.get(:unsupported_streams) || MapSet.new()
+            known_unsupported_streams = Process.get(:known_unsupported_streams) || MapSet.new()
 
-            if not MapSet.member?(unsupported_streams, id) do
+            if not MapSet.member?(known_unsupported_streams, id) do
               Logger.debug("""
               #{__MODULE__ |> inspect()}: dropping unsupported stream with id #{id |> inspect()}.\
               Stream info: #{unsupported_stream_info |> inspect(pretty: true)}
               """)
 
-              unsupported_streams = unsupported_streams |> MapSet.put(id)
-              Process.put(:unsupported_streams, unsupported_streams)
+              known_unsupported_streams = known_unsupported_streams |> MapSet.put(id)
+              Process.put(:known_unsupported_streams, known_unsupported_streams)
             end
 
             []

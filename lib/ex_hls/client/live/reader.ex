@@ -61,7 +61,7 @@ defmodule ExHLS.Client.Live.Reader do
 
     media_playlist =
       state.media_playlist_url
-      |> Utils.req_get_or_open_file!()
+      |> Utils.download_or_read_file!()
       |> ExM3U8.deserialize_media_playlist!([])
 
     state = %{state | media_playlist: media_playlist}
@@ -189,7 +189,7 @@ defmodule ExHLS.Client.Live.Reader do
     uri = Path.join(state.media_base_url, segment.uri)
     Logger.debug("[ExHLS.Client] Downloading segment: #{uri}")
 
-    segment_content = Utils.req_get_or_open_file!(uri)
+    segment_content = Utils.download_or_read_file!(uri)
 
     state = maybe_resolve_demuxing_engine(segment.uri, state)
 

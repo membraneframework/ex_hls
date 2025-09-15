@@ -5,8 +5,8 @@ defmodule ExHLS.Client.Utils do
 
   alias Membrane.{AAC, H264, RemoteStream}
 
-  @spec req_get_or_open_file!(String.t()) :: binary()
-  def req_get_or_open_file!(uri_or_path) do
+  @spec download_or_read_file!(String.t()) :: binary()
+  def download_or_read_file!(uri_or_path) do
     case URI.parse(uri_or_path).host do
       nil ->
         Logger.debug("[ExHLS.Client] opening #{uri_or_path}")

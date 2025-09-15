@@ -49,7 +49,7 @@ defmodule ExHLS.Client do
   You can also pass `:how_much_to_skip_ms` option to specify how many milliseconds
   of the beginning of the stream should be skipped. This option is only supported
   when the HLS stream is in the VoD mode. Defaults to `0`.
-  
+
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
   To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
@@ -62,7 +62,7 @@ defmodule ExHLS.Client do
       |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0)
       |> Map.new()
 
-    root_playlist_string = Utils.req_get_or_open_file!(url)
+    root_playlist_string = Utils.download_or_read_file!(url)
     multivariant_playlist = root_playlist_string |> ExM3U8.deserialize_multivariant_playlist!([])
 
     %__MODULE__{
@@ -79,29 +79,29 @@ defmodule ExHLS.Client do
       live_forwarder: nil,
       how_much_to_skip_ms: how_much_to_skip_ms
     }
-    |> maybe_resolve_hls_mode()
+    |> maybe_resolve_media_playlist()
   end
 
-  defp maybe_resolve_hls_mode(client) do
+  defp maybe_resolve_media_playlist(client) do
     case get_variants(client) |> Map.to_list() do
       [] ->
         client
         |> treat_root_playlist_as_media_playlist()
-        |> do_resolve_hls_mode()
+        |> resolve_hls_mode()
 
       [{variant_id, _variant}] ->
         client
         |> do_choose_variant(variant_id)
-        |> do_resolve_hls_mode()
+        |> resolve_hls_mode()
 
       _many_variants ->
         client
     end
   end
 
-  defp do_resolve_hls_mode(%{hls_mode: nil} = client) do
+  defp resolve_hls_mode(%{hls_mode: nil} = client) do
     if client.media_playlist.info.end_list? do
-      Logger.info("[#{inspect(__MODULE__)}] HLS stream type is VoD.")
+      Logger.info("[#{inspect(__MODULE__)}] #{client.media_playlist_url} HLS stream type is VoD.")
 
       vod_client =
         ExHLS.Client.VOD.new(
@@ -113,8 +113,9 @@ defmodule ExHLS.Client do
       %{client | vod_client: vod_client, hls_mode: :vod}
     else
       Logger.info("""
-      [#{inspect(__MODULE__)}] HLS stream type is Live. Reading multimedia chunks will be \
-      available only from the parent process (#{inspect(client.parent_process)}).
+      [#{inspect(__MODULE__)}] #{client.media_playlist_url} HLS stream type is Live. Reading \
+      multimedia chunks will be available only from the parent process \
+      (#{inspect(client.parent_process)}).
       """)
 
       if client.how_much_to_skip_ms > 0 do
@@ -175,7 +176,7 @@ defmodule ExHLS.Client do
   def choose_variant(%__MODULE__{} = client, variant_id) do
     client
     |> do_choose_variant(variant_id)
-    |> do_resolve_hls_mode()
+    |> resolve_hls_mode()
   end
 
   defp do_choose_variant(%__MODULE__{} = client, variant_id) do
@@ -184,7 +185,7 @@ defmodule ExHLS.Client do
 
     media_playlist =
       media_playlist_url
-      |> Utils.req_get_or_open_file!()
+      |> Utils.download_or_read_file!()
       |> ExM3U8.deserialize_media_playlist!([])
 
     %{
@@ -224,13 +225,13 @@ defmodule ExHLS.Client do
   end
 
   @spec get_skipped_segments_cumulative_duration_ms(client()) ::
-          {:ok, non_neg_integer()} | {:error, reason :: any()}
+          {:ok, non_neg_integer()} | {:error, reason :: any()} | no_return()
   def get_skipped_segments_cumulative_duration_ms(client) do
     :ok = ensure_hls_mode_resolved!(client)
 
     case client.hls_mode do
       :vod -> VOD.get_skipped_segments_cumulative_duration_ms(client.vod_client)
-      :live -> {:error, "Skipping segments is not supported in HLS Live mode"}
+      :live -> raise "Skipping segments is not supported in HLS Live mode"
     end
   end
 end

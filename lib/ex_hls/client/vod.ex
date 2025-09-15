@@ -136,12 +136,7 @@ defmodule ExHLS.Client.VOD do
          {:ok, track_id} <- get_track_id(client, media_type),
          {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
       chunk = %ExHLS.Chunk{chunk | media_type: media_type}
-
-      client =
-        client
-        # |> put_in([:last_timestamps, media_type], chunk.dts_ms)
-        |> put_in([:demuxing_engine], demuxing_engine)
-
+      client = client |> put_in([:demuxing_engine], demuxing_engine)
       {chunk, client}
     else
       # returned from the second match
@@ -183,7 +178,7 @@ defmodule ExHLS.Client.VOD do
   end
 
   defp generate_next_stream_chunk(client) do
-    media_type = media_type_with_lower_ts(client, :return)
+    media_type = media_type_with_lower_ts(client, :returned)
 
     case read_chunk(client, media_type) do
       {%ExHLS.Chunk{} = chunk, client} ->
@@ -238,12 +233,10 @@ defmodule ExHLS.Client.VOD do
     end
   end
 
-  defp media_type_with_lower_ts(client, mode) when mode in [:read, :return] do
-    timestamp_type = if mode == :read, do: :read, else: :returned
-
+  defp media_type_with_lower_ts(client, mode) when mode in [:read, :returned] do
     client.media_types
     |> Enum.max_by(fn media_type ->
-      case client.last_timestamps[media_type][timestamp_type] do
+      case client.last_timestamps[media_type][mode] do
         nil -> :infinity
         ts -> -ts
       end
@@ -258,7 +251,7 @@ defmodule ExHLS.Client.VOD do
         segment_content =
           client.media_base_url
           |> Path.join(segment_uri)
-          |> Utils.req_get_or_open_file!()
+          |> Utils.download_or_read_file!()
 
         demuxing_engine =
           client.demuxing_engine

@@ -206,13 +206,13 @@ defmodule Client.Test do
   defp assert_chunks_are_in_proper_order(chunks) do
     iteration_state = %{
       last_dts: %{audio: nil, video: nil},
-      had_to_end: %{audio: false, video: false}
+      should_end: %{audio: false, video: false}
     }
 
     _final_iteration_state =
       chunks
       |> Enum.reduce(iteration_state, fn chunk, iteration_state ->
-        assert not iteration_state.had_to_end[chunk.media_type]
+        assert not iteration_state.should_end[chunk.media_type]
 
         expected_media_types =
           case iteration_state.last_dts do
@@ -224,14 +224,9 @@ defmodule Client.Test do
             %{audio: audio_dts, video: video_dts} when audio_dts == video_dts -> [:audio, :video]
           end
 
-        if chunk.media_type in expected_media_types do
-          iteration_state
-          |> put_in([:last_dts, chunk.media_type], chunk.dts_ms)
-        else
-          iteration_state
-          |> put_in([:last_dts, chunk.media_type], chunk.dts_ms)
-          |> put_in([:had_to_end, chunk.media_type], true)
-        end
+        iteration_state
+        |> put_in([:last_dts, chunk.media_type], chunk.dts_ms)
+        |> put_in([:should_end, chunk.media_type], chunk.media_type not in expected_media_types)
       end)
 
     :ok
