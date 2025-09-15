@@ -225,13 +225,13 @@ defmodule ExHLS.Client do
   end
 
   @spec get_skipped_segments_cumulative_duration_ms(client()) ::
-          {:ok, non_neg_integer()} | {:error, reason :: any()} | no_return()
+          {:ok, non_neg_integer()} | no_return()
   def get_skipped_segments_cumulative_duration_ms(client) do
     :ok = ensure_hls_mode_resolved!(client)
 
     case client.hls_mode do
       :vod -> VOD.get_skipped_segments_cumulative_duration_ms(client.vod_client)
-      :live -> raise "Skipping segments is not supported in HLS Live mode"
+      :live -> {:ok, 0}
     end
   end
 end

@@ -25,7 +25,7 @@ defmodule ExHLS.Client.Live.Reader do
       forwarder: forwarder,
       tracks_data: nil,
       tracks_info_handled?: false,
-      target_duration: nil,
+      # target_duration: nil,
       media_playlist: nil,
       media_playlist_url: media_playlist_url,
       media_base_url: Path.dirname(media_playlist_url),
@@ -35,7 +35,8 @@ defmodule ExHLS.Client.Live.Reader do
       media_init_downloaded?: false,
       max_downloaded_seq_num: nil,
       playlist_check_scheduled?: false,
-      timestamp_offset: nil
+      timestamp_offset: nil,
+      playing_started?: false
     }
 
     {:ok, state, {:continue, :setup}}
@@ -70,7 +71,7 @@ defmodule ExHLS.Client.Live.Reader do
 
     state
     |> schedule_next_playlist_check()
-    |> download_chunks()
+    |> maybe_download_chunks()
   end
 
   defp generate_discontinuity_warnings(state) do
@@ -87,7 +88,31 @@ defmodule ExHLS.Client.Live.Reader do
     end)
   end
 
-  defp download_chunks(state) do
+  defp maybe_download_chunks(state) when state.playing_started?,
+    do: do_download_chunks(state)
+
+  defp maybe_download_chunks(state) do
+    segments_duration_sum =
+      state.media_playlist.timeline
+      |> Enum.flat_map(fn
+        %Segment{duration: duration} -> [duration]
+        _other_tag -> []
+      end)
+      |> Enum.sum()
+
+    if segments_duration_sum >= 2 * state.media_playlist.info.target_duration do
+      Logger.info("""
+      [ExHLS.Client] Starting to play the Live HLS stream #{state.media_playlist_url}
+      """)
+
+      %{state | playing_started?: true}
+      |> do_download_chunks()
+    else
+      state
+    end
+  end
+
+  defp do_download_chunks(state) do
     {maybe_media_init, state} = get_media_inits_to_download(state)
 
     download_from_seq_num =
@@ -159,20 +184,8 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp schedule_next_playlist_check(%{playlist_check_scheduled?: false} = state) do
-    last_segment =
-      state.media_playlist.timeline
-      |> Enum.reverse()
-      |> Enum.find(&match?(%Segment{}, &1))
-
-    assumed_duration_s =
-      case last_segment do
-        %Segment{duration: duration} -> duration
-        nil -> state.media_playlist.target_duration
-      end
-
-    # Schedule the next check in 1/4 of min(target_duration, last_segment.duration)
     playlist_check_timeout_ms =
-      (assumed_duration_s * 250) |> round()
+      (state.media_playlist.info.target_duration * 250) |> round()
 
     Process.send_after(self(), :check_media_playlist, playlist_check_timeout_ms)
 
