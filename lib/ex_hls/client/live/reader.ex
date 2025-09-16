@@ -25,7 +25,6 @@ defmodule ExHLS.Client.Live.Reader do
       forwarder: forwarder,
       tracks_data: nil,
       tracks_info_handled?: false,
-      # target_duration: nil,
       media_playlist: nil,
       media_playlist_url: media_playlist_url,
       media_base_url: Path.dirname(media_playlist_url),
@@ -88,31 +87,38 @@ defmodule ExHLS.Client.Live.Reader do
     end)
   end
 
-  defp maybe_download_chunks(state) when state.playing_started?,
-    do: do_download_chunks(state)
-
   defp maybe_download_chunks(state) do
-    segments_duration_sum =
-      state.media_playlist.timeline
-      |> Enum.flat_map(fn
-        %Segment{duration: duration} -> [duration]
-        _other_tag -> []
-      end)
-      |> Enum.sum()
+    cond do
+      state.playing_started? ->
+        download_chunks(state)
 
-    if segments_duration_sum >= 2 * state.media_playlist.info.target_duration do
-      Logger.info("""
-      [ExHLS.Client] Starting to play the Live HLS stream #{state.media_playlist_url}
-      """)
+      should_start_playing?(state) ->
+        %{state | playing_started?: true}
+        |> download_chunks()
 
-      %{state | playing_started?: true}
-      |> do_download_chunks()
-    else
-      state
+      true ->
+        state
     end
   end
 
-  defp do_download_chunks(state) do
+  defp should_start_playing?(state) do
+    %{media_sequence: media_sequence, target_duration: target_duration} =
+      state.media_playlist.info
+
+    (is_number(media_sequence) and media_sequence >= 1) or
+      segments_duration_sum(state) >= 2 * target_duration
+  end
+
+  defp segments_duration_sum(state) do
+    state.media_playlist.timeline
+    |> Enum.flat_map(fn
+      %Segment{duration: duration} -> [duration]
+      _other_tag -> []
+    end)
+    |> Enum.sum()
+  end
+
+  defp download_chunks(state) do
     {maybe_media_init, state} = get_media_inits_to_download(state)
 
     download_from_seq_num =
