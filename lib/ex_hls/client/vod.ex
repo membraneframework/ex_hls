@@ -3,6 +3,8 @@ defmodule ExHLS.Client.VOD do
   # Module providing functionality to read and demux HLS VOD streams.
   # It allows reading chunks from the stream, choosing variants, and managing media playlists.
 
+  # TODO: It would be nice to refactor this module a little, maybe to make it similar to Reader
+
   use Bunch.Access
 
   require Logger

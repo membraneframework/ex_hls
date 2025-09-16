@@ -17,7 +17,7 @@ defmodule ExHLS.Client do
     :media_playlist_url,
     :multivariant_playlist,
     :root_playlist_url,
-    :root_playlist_string,
+    :root_playlist_raw_content,
     :base_url,
     :vod_client,
     :live_reader,
@@ -62,8 +62,10 @@ defmodule ExHLS.Client do
       |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0)
       |> Map.new()
 
-    root_playlist_string = Utils.download_or_read_file!(url)
-    multivariant_playlist = root_playlist_string |> ExM3U8.deserialize_multivariant_playlist!([])
+    root_playlist_raw_content = Utils.download_or_read_file!(url)
+
+    multivariant_playlist =
+      root_playlist_raw_content |> ExM3U8.deserialize_multivariant_playlist!([])
 
     %__MODULE__{
       parent_process: parent_process,
@@ -72,7 +74,7 @@ defmodule ExHLS.Client do
       media_playlist_url: nil,
       multivariant_playlist: multivariant_playlist,
       root_playlist_url: url,
-      root_playlist_string: root_playlist_string,
+      root_playlist_raw_content: root_playlist_raw_content,
       base_url: Path.dirname(url),
       vod_client: nil,
       live_reader: nil,
@@ -147,7 +149,7 @@ defmodule ExHLS.Client do
 
   defp treat_root_playlist_as_media_playlist(%__MODULE__{media_playlist: nil} = client) do
     media_playlist =
-      client.root_playlist_string
+      client.root_playlist_raw_content
       |> ExM3U8.deserialize_media_playlist!([])
 
     %{

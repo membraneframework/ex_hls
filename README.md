@@ -15,7 +15,7 @@ The package can be installed by adding `ex_hls` to your list of dependencies in 
 ```elixir
 def deps do
   [
-    {:ex_hls, "~> 0.0.1"}
+    {:ex_hls, "~> 0.1.0"}
   ]
 end
 ```
@@ -53,7 +53,7 @@ where `<id>` is the `id` field of the entry returned by `ExHLS.Client.get_varian
 
 Now you can get the Elixir stream containing media chunks:
 ```elixir
-stream = ExHLS.Clinet.generate_stream(client)
+stream = ExHLS.Client.generate_stream(client)
 Enum.take(stream, 5)
 # Returns: 
 # [
@@ -105,7 +105,7 @@ Enum.take(stream, 5)
 # ]
 ```
 
-To pop only single elements from the stream containing ExHLS Chunks, you can use [`StreamSplit.pop/1](https://hexdocs.pm/stream_split/StreamSplit.html#pop/1).
+To pop only single elements from the stream containing ExHLS Chunks, you can use [`StreamSplit.pop/1`](https://hexdocs.pm/stream_split/StreamSplit.html#pop/1).
 
 Note: If the HLS playlist type is Live (not VoD), you can generate stream from single `ExHLS.Client` instance only once and only from the process, that created that `ExHLS.Client`. If you want to genereate more streams with Live HLS, you have to create a new `ExHLS.Client` each time.
 

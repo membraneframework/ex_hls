@@ -190,6 +190,10 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp schedule_next_playlist_check(%{playlist_check_scheduled?: false} = state) do
+    # Playlist check interval is 1/4 of target duration, while the RFC says to set it
+    # to 1/2 of target duration. We do it this way to reduce the chance of race condition
+    # occuring when we check the playlist just before the server updates it.
+
     playlist_check_timeout_ms =
       (state.media_playlist.info.target_duration * 250) |> round()
 
