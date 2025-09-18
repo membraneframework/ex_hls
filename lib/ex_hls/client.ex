@@ -133,6 +133,8 @@ defmodule ExHLS.Client do
     end
   end
 
+  defp resolve_hls_mode(%{hls_mode: mode} = client) when mode in [:live, :vod], do: client
+
   defp ensure_hls_mode_resolved!(%__MODULE__{hls_mode: nil} = client) do
     # the error message is about choosing a variant, while the function name is
     # about resolving the HLS mode, but it is done this way because the HLS mode

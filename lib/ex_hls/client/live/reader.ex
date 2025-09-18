@@ -102,10 +102,14 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp should_start_playing?(state) do
-    %{media_sequence: media_sequence, target_duration: target_duration} =
-      state.media_playlist.info
+    %ExM3U8.MediaPlaylist.Info{
+      media_sequence: media_sequence,
+      target_duration: target_duration,
+      end_list?: end_list?
+    } = state.media_playlist.info
 
-    (is_number(media_sequence) and media_sequence >= 1) or
+    end_list? or
+      (is_number(media_sequence) and media_sequence >= 1) or
       segments_duration_sum(state) >= 2 * target_duration
   end
 

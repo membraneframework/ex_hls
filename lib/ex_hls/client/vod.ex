@@ -237,6 +237,7 @@ defmodule ExHLS.Client.VOD do
 
   defp media_type_with_lower_ts(client, mode) when mode in [:read, :returned] do
     client.media_types
+    |> Enum.reject(&client.stream_ended_by_media_type[&1])
     |> Enum.max_by(fn media_type ->
       case client.last_timestamps[media_type][mode] do
         nil -> :infinity
