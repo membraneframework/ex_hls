@@ -363,8 +363,6 @@ defmodule ExHLS.Client.Live.Reader do
       |> Map.values()
       |> Enum.split_with(&(&1.media_type == :audio))
 
-    # |> IO.inspect(label: "SPLITTED TRACKS DATA")
-
     cond do
       doesnt_exist_or_empty?(maybe_audio_track) and doesnt_exist_or_empty?(maybe_video_track) ->
         {:error, :no_track_to_read}
@@ -387,8 +385,6 @@ defmodule ExHLS.Client.Live.Reader do
 
         {:ok, track_id}
     end
-
-    # |> IO.inspect(label: "TRACK ID TO READ")
   end
 
   defp doesnt_exist_or_empty?([]), do: true
