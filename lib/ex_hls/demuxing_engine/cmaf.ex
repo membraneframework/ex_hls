@@ -69,8 +69,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
       demuxing_engine = put_in(demuxing_engine.tracks_to_chunks[track_id], popped_qex)
       {:ok, chunk, demuxing_engine}
     else
-      nil -> {:error, :unknown_track, demuxing_engine}
-      {:empty, _qex} -> {:error, :empty_track_data, demuxing_engine}
+      _other -> {:error, :empty_track_data, demuxing_engine}
     end
   end
 

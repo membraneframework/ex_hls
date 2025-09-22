@@ -9,6 +9,7 @@ defmodule ExHLS.Client.Utils do
   def download_or_read_file!(uri_or_path) do
     case URI.parse(uri_or_path).host do
       nil ->
+        :ok = await_until_file_exists!(uri_or_path)
         Logger.debug("[ExHLS.Client] opening #{uri_or_path}")
         File.read!(uri_or_path)
 
@@ -17,6 +18,21 @@ defmodule ExHLS.Client.Utils do
         %{status: 200, body: body} = Req.get!(uri_or_path)
         body
     end
+  end
+
+  defp await_until_file_exists!(file_path) do
+    cond do
+      File.exists?(file_path) -> :ok
+      file_exists_after_waiting?(file_path, 20) -> :ok
+      file_exists_after_waiting?(file_path, 60) -> :ok
+      file_exists_after_waiting?(file_path, 120) -> :ok
+      true -> raise "File #{file_path} does not exist"
+    end
+  end
+
+  defp file_exists_after_waiting?(file_path, ms) do
+    Process.sleep(ms)
+    File.exists?(file_path)
   end
 
   @spec stream_format_to_media_type(struct()) :: :audio | :video
