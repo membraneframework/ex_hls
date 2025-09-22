@@ -23,11 +23,16 @@ defmodule ExHLS.Client.Utils do
   defp await_until_file_exists!(file_path) do
     cond do
       File.exists?(file_path) -> :ok
-      Process.sleep(20) && File.exists?(file_path) -> :ok
-      Process.sleep(60) && File.exists?(file_path) -> :ok
-      Process.sleep(180) && File.exists?(file_path) -> :ok
+      file_exists_after_waiting?(file_path, 20) -> :ok
+      file_exists_after_waiting?(file_path, 60) -> :ok
+      file_exists_after_waiting?(file_path, 120) -> :ok
       true -> raise "File #{file_path} does not exist"
     end
+  end
+
+  defp file_exists_after_waiting?(file_path, ms) do
+    Process.sleep(ms)
+    File.exists?(file_path)
   end
 
   @spec stream_format_to_media_type(struct()) :: :audio | :video
