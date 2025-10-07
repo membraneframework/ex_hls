@@ -10,7 +10,6 @@ defmodule ExHLS.Client.VOD do
   require Logger
 
   alias ExHLS.Client.Utils
-  alias ExHLS.DemuxingEngine
   alias ExM3U8.Tags.Segment
   alias Membrane.{AAC, H264, RemoteStream}
 
@@ -280,13 +279,7 @@ defmodule ExHLS.Client.VOD do
   end
 
   defp ensure_demuxing_engine_resolved(%{demuxing_engine: nil} = client, segment_uri) do
-    demuxing_engine_impl =
-      case Path.extname(segment_uri) do
-        ".ts" -> DemuxingEngine.MPEGTS
-        ".m4s" -> DemuxingEngine.CMAF
-        ".mp4" -> DemuxingEngine.CMAF
-        _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
-      end
+    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri)
 
     %{
       client
