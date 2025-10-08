@@ -395,7 +395,7 @@ defmodule ExHLS.Client.Live.Reader do
   defp doesnt_exist_or_empty?([track_data]), do: track_data.empty?
 
   defp maybe_resolve_demuxing_engine(segment_uri, %{demuxing_engine: nil} = state) do
-    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri)
+    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri, state.segment_format)
 
     %{
       state
