@@ -167,7 +167,12 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: nil} = state) do
-    length(state.media_playlist.timeline) + state.media_playlist.info.media_sequence - 1
+    how_many_segments =
+      state.media_playlist.timeline
+      |> Enum.filter(&match?(%Segment{}, &1))
+      |> Enum.count()
+
+    state.media_playlist.info.media_sequence + how_many_segments - 1
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
