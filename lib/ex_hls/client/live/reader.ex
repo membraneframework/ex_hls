@@ -7,7 +7,6 @@ defmodule ExHLS.Client.Live.Reader do
 
   alias ExHLS.Client.Live.Forwarder
   alias ExHLS.Client.Utils
-  alias ExHLS.DemuxingEngine
 
   alias ExM3U8.Tags.{MediaInit, Segment}
 
@@ -396,25 +395,7 @@ defmodule ExHLS.Client.Live.Reader do
   defp doesnt_exist_or_empty?([track_data]), do: track_data.empty?
 
   defp maybe_resolve_demuxing_engine(segment_uri, %{demuxing_engine: nil} = state) do
-    demuxing_engine_impl =
-      case Path.extname(segment_uri) do
-        ".ts" ->
-          DemuxingEngine.MPEGTS
-
-        ".m4s" ->
-          DemuxingEngine.CMAF
-
-        ".mp4" ->
-          DemuxingEngine.CMAF
-
-        _other ->
-          Logger.warning("""
-          Unsupported segment URI extension: #{segment_uri |> inspect()}
-          Falling back to MPEG-TS.
-          """)
-
-          DemuxingEngine.MPEGTS
-      end
+    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri)
 
     %{
       state
