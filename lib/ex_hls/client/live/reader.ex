@@ -10,16 +10,21 @@ defmodule ExHLS.Client.Live.Reader do
 
   alias ExM3U8.Tags.{MediaInit, Segment}
 
-  @spec start_link(String.t(), Forwarder.t()) :: {:ok, pid()} | {:error, any()}
-  def start_link(media_playlist_url, forwarder) do
+  @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil) :: {:ok, pid()} | {:error, any()}
+  def start_link(media_playlist_url, forwarder, segment_format) do
     GenServer.start_link(__MODULE__, %{
       media_playlist_url: media_playlist_url,
-      forwarder: forwarder
+      forwarder: forwarder,
+      segment_format: segment_format
     })
   end
 
   @impl true
-  def init(%{media_playlist_url: media_playlist_url, forwarder: forwarder}) do
+  def init(%{
+        media_playlist_url: media_playlist_url,
+        forwarder: forwarder,
+        segment_format: segment_format
+      }) do
     state = %{
       forwarder: forwarder,
       tracks_data: nil,
@@ -34,7 +39,8 @@ defmodule ExHLS.Client.Live.Reader do
       max_downloaded_seq_num: nil,
       playlist_check_scheduled?: false,
       timestamp_offset: nil,
-      playing_started?: false
+      playing_started?: false,
+      segment_format: segment_format
     }
 
     {:ok, state, {:continue, :setup}}

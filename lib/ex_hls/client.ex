@@ -144,7 +144,14 @@ defmodule ExHLS.Client do
       end
 
       {:ok, forwarder} = ExHLS.Client.Live.Forwarder.start_link(client.parent_process)
-      {:ok, reader} = ExHLS.Client.Live.Reader.start_link(client.media_playlist_url, forwarder)
+
+      {:ok, reader} =
+        ExHLS.Client.Live.Reader.start_link(
+          client.media_playlist_url,
+          forwarder,
+          client.segment_format
+        )
+
       %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}
     end
   end
