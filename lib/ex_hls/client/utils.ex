@@ -59,7 +59,7 @@ defmodule ExHLS.Client.Utils do
         Unsupported segment URI extension: #{segment_uri |> inspect()}
         Falling back to recognizing segment as MPEG-TS container file.
         You can force recognizing segment as CMAF container file
-        by providing `segment`
+        by providing `segment_format: :cmaf` to `ExHLS.Client/2`.
         """)
     end
   end
