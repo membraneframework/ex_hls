@@ -167,7 +167,7 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: nil} = state) do
-    length(state.media_playlist.timeline) + state.media_playlist.info.media_sequence
+    length(state.media_playlist.timeline) + state.media_playlist.info.media_sequence - 1
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
