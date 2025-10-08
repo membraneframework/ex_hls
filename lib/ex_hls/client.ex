@@ -185,7 +185,12 @@ defmodule ExHLS.Client do
 
   defp do_choose_variant(%__MODULE__{} = client, variant_id) do
     chosen_variant = get_variants(client) |> Map.fetch!(variant_id)
-    media_playlist_url = Path.join(client.base_url, chosen_variant.uri)
+
+    media_playlist_url =
+      case URI.new!(chosen_variant.uri).host do
+        nil -> Path.join(client.base_url, chosen_variant.uri)
+        _some_host -> chosen_variant.uri
+      end
 
     media_playlist =
       media_playlist_url

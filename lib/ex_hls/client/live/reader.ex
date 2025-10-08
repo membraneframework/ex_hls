@@ -213,7 +213,12 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp download_and_consume_segment(segment, state) do
-    uri = Path.join(state.media_base_url, segment.uri)
+    uri =
+      case URI.new!(segment.uri).host do
+        nil -> Path.join(state.media_base_url, segment.uri)
+        _some_host -> segment.uri
+      end
+
     Logger.debug("[ExHLS.Client] Downloading segment: #{uri}")
 
     segment_content = Utils.download_or_read_file!(uri)
@@ -393,10 +398,22 @@ defmodule ExHLS.Client.Live.Reader do
   defp maybe_resolve_demuxing_engine(segment_uri, %{demuxing_engine: nil} = state) do
     demuxing_engine_impl =
       case Path.extname(segment_uri) do
-        ".ts" -> DemuxingEngine.MPEGTS
-        ".m4s" -> DemuxingEngine.CMAF
-        ".mp4" -> DemuxingEngine.CMAF
-        _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
+        ".ts" ->
+          DemuxingEngine.MPEGTS
+
+        ".m4s" ->
+          DemuxingEngine.CMAF
+
+        ".mp4" ->
+          DemuxingEngine.CMAF
+
+        _other ->
+          Logger.warning("""
+          Unsupported segment URI extension: #{segment_uri |> inspect()}
+          Falling back to MPEG-TS.
+          """)
+
+          DemuxingEngine.MPEGTS
       end
 
     %{
