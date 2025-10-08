@@ -167,26 +167,7 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: nil} = state) do
-    {segments_with_end_times, duration_sum} =
-      state.media_playlist.timeline
-      |> Enum.flat_map_reduce(0, fn
-        %Segment{} = segment, duration_acc ->
-          duration_acc = duration_acc + segment.duration
-          {[{segment, duration_acc}], duration_acc}
-
-        _other_tag, duration_acc ->
-          {[], duration_acc}
-      end)
-
-    start_time = duration_sum - 2 * state.media_playlist.info.target_duration
-
-    segment_index =
-      segments_with_end_times
-      |> Enum.find_index(fn {_segment, segment_end_time} ->
-        start_time <= segment_end_time
-      end)
-
-    segment_index + state.media_playlist.info.media_sequence
+    length(state.media_playlist.timeline) + state.media_playlist.info.media_sequence
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
