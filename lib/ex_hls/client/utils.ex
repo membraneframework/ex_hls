@@ -44,10 +44,12 @@ defmodule ExHLS.Client.Utils do
 
   @spec resolve_demuxing_engine_impl(String.t()) :: atom()
   def resolve_demuxing_engine_impl(segment_uri) do
-    case Path.extname(segment_uri) do
-      ".ts" <> _id -> DemuxingEngine.MPEGTS
-      ".m4s" <> _id -> DemuxingEngine.CMAF
-      ".mp4" <> _id -> DemuxingEngine.CMAF
+    URI.parse(segment_uri).path
+    |> Path.extname()
+    |> case do
+      ".ts" -> DemuxingEngine.MPEGTS
+      ".m4s" -> DemuxingEngine.CMAF
+      ".mp4" -> DemuxingEngine.CMAF
       _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
     end
   end
