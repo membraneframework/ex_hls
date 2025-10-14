@@ -6,11 +6,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
-  @enforce_keys [:demuxer]
+  @enforce_keys [:demuxer, :last_tden]
   defstruct @enforce_keys
 
   @type t :: %__MODULE__{
-          demuxer: Demuxer.t()
+          demuxer: Demuxer.t(),
+          last_tden: String.t() | nil
         }
 
   @impl true
@@ -25,7 +26,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     # TODO - figure out how to do it properly
     demuxer = %{demuxer | waiting_random_access_indicator: false}
 
-    %__MODULE__{demuxer: demuxer}
+    %__MODULE__{demuxer: demuxer, last_tden: nil}
   end
 
   @impl true
@@ -71,7 +72,23 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
+    {id3_track_id, _stream_description} =
+      demuxing_engine.demuxer.pmt.streams
+      |> Enum.find(fn {_pid, stream_description} ->
+        stream_description.stream_type ==
+          :METADATA_IN_PES
+      end)
+
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
+      {last_tden, demuxer} =
+        case Demuxer.take(demuxer, id3_track_id) do
+          {[], demuxer} ->
+            {demuxing_engine.last_tden, demuxer}
+
+          {[id3], demuxer} ->
+            {parse_tden(id3.data), demuxer}
+        end
+
       chunk = %ExHLS.Chunk{
         payload: packet.data,
         pts_ms: packet.pts |> packet_ts_to_millis(),
@@ -79,14 +96,28 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         track_id: track_id,
         metadata: %{
           discontinuity: packet.discontinuity,
-          is_aligned: packet.is_aligned
+          is_aligned: packet.is_aligned,
+          tden: last_tden
         }
       }
 
-      {:ok, chunk, %{demuxing_engine | demuxer: demuxer}}
+      {:ok, chunk, %{demuxing_engine | demuxer: demuxer, last_tden: last_tden}}
     else
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
+    end
+  end
+
+  defp parse_tden(payload) do
+    case :binary.match(payload, "TDEN") do
+      {pos, len} ->
+        trailing_bytes = :binary.part(payload, pos + len, byte_size(payload) - (pos + len))
+        <<size::integer-size(4)-unit(8), _flags::16, rest::binary>> = trailing_bytes
+        <<_3, text::binary-size(size - 2), 0, _rest::binary>> = rest
+        text
+
+      :nomatch ->
+        nil
     end
   end
 
