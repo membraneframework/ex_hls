@@ -3,6 +3,7 @@ defmodule ExHLS.Client.Utils do
 
   require Logger
 
+  alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
   @spec download_or_read_file!(String.t()) :: binary()
@@ -40,4 +41,16 @@ defmodule ExHLS.Client.Utils do
   def stream_format_to_media_type(%AAC{}), do: :audio
   def stream_format_to_media_type(%RemoteStream{content_format: H264}), do: :video
   def stream_format_to_media_type(%RemoteStream{content_format: AAC}), do: :audio
+
+  @spec resolve_demuxing_engine_impl(String.t()) :: atom()
+  def resolve_demuxing_engine_impl(segment_uri) do
+    URI.parse(segment_uri).path
+    |> Path.extname()
+    |> case do
+      ".ts" -> DemuxingEngine.MPEGTS
+      ".m4s" -> DemuxingEngine.CMAF
+      ".mp4" -> DemuxingEngine.CMAF
+      _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
+    end
+  end
 end
