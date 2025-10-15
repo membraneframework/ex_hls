@@ -9,8 +9,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   alias MPEG.TS.Demuxer
 
   @enforce_keys [:demuxer]
-  defstruct @enforce_keys ++
-              [last_packet_ts: %{pts: nil, dts: nil}, ts_rollovers_count: 0]
+  defstruct @enforce_keys ++ [last_tracks_timestamps: %{}, ts_rollovers_count: 0]
 
   # @timestamp_range_size is 2^33
   @timestamp_range_size 8_589_934_592
@@ -80,7 +79,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       {demuxing_engine, packet} =
         %{demuxing_engine | demuxer: demuxer}
-        |> handle_possible_timestamps_rollover(packet)
+        |> handle_possible_timestamps_rollover(track_id, packet)
 
       chunk = %ExHLS.Chunk{
         payload: packet.data,
@@ -109,8 +108,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     %{demuxing_engine | demuxer: demuxer}
   end
 
-  defp handle_possible_timestamps_rollover(%__MODULE__{} = demuxing_engine, packet) do
-    last_ts = demuxing_engine.last_packet_ts.dts || demuxing_engine.last_packet_ts.pts
+  defp handle_possible_timestamps_rollover(%__MODULE__{} = demuxing_engine, track_id, packet) do
     rollovers_offset = demuxing_engine.ts_rollovers_count * @timestamp_range_size
 
     packet =
@@ -119,7 +117,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
       |> Map.update!(:dts, &add_offset_if_not_nil(&1, rollovers_offset))
 
     {demuxing_engine, packet} =
-      if last_ts != nil and last_ts > (packet.dts || packet.pts) do
+      with {:ok, last_ts} <- get_last_track_timestamp(demuxing_engine, track_id),
+           true <- last_ts > (packet.dts || packet.pts) do
         demuxing_engine = demuxing_engine |> Map.update!(:ts_rollovers_count, &(&1 + 1))
 
         packet =
@@ -129,17 +128,25 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
         {demuxing_engine, packet}
       else
-        {demuxing_engine, packet}
+        _other -> {demuxing_engine, packet}
       end
+
+    last_track_timestamps = Map.take(packet, [:pts, :dts])
 
     demuxing_engine =
       demuxing_engine
-      |> put_in([:last_packet_ts, :pts], packet.pts)
-      |> put_in([:last_packet_ts, :dts], packet.dts)
+      |> put_in([:last_tracks_timestamps, track_id], last_track_timestamps)
 
     {demuxing_engine, packet}
   end
 
   defp add_offset_if_not_nil(nil, _offset), do: nil
   defp add_offset_if_not_nil(value, offset), do: value + offset
+
+  defp get_last_track_timestamp(%__MODULE__{} = demuxing_engine, track_id) do
+    case Map.fetch(demuxing_engine.last_tracks_timestamps, track_id) do
+      {:ok, %{dts: dts, pts: pts}} -> {:ok, dts || pts}
+      :error -> :error
+    end
+  end
 end
