@@ -11,8 +11,17 @@ defmodule ExHLS.DemuxingEngine.MPEGTS.Test do
     packets =
       1..200
       |> Enum.map(fn i ->
-        timestamp = (i * timestamp_granularity) |> div(timestamp_range)
-        %{pts: timestamp, dts: timestamp, data: <<>>, discontinuity: false, is_aligned: true}
+        og_timestamp = i * timestamp_granularity
+        rolled_timestamp = og_timestamp |> rem(timestamp_range)
+
+        %{
+          og_timestamp: og_timestamp,
+          pts: rolled_timestamp,
+          dts: rolled_timestamp,
+          data: <<>>,
+          discontinuity: false,
+          is_aligned: true
+        }
       end)
 
     demuxer = %{
@@ -46,8 +55,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS.Test do
 
         Enum.zip(chunks, packets)
         |> Enum.each(fn {chunk, packet} ->
-          assert chunk.pts_ms == div(packet.pts, 1_000_000)
-          assert chunk.dts_ms == div(packet.dts, 1_000_000)
+          assert chunk.pts_ms == div(packet.og_timestamp, 1_000_000)
+          assert chunk.dts_ms == div(packet.og_timestamp, 1_000_000)
         end)
 
         demuxing_engine
