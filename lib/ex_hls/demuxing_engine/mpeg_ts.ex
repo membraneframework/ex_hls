@@ -110,7 +110,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp handle_possible_timestamps_rollover(%__MODULE__{} = demuxing_engine, packet) do
-    last_ts = state.last_packet_ts.dts || state.last_packet_ts.pts
+    last_ts = demuxing_engine.last_packet_ts.dts || demuxing_engine.last_packet_ts.pts
     rollovers_offset = demuxing_engine.ts_rollovers_count * @timestamp_range_size
 
     packet =
