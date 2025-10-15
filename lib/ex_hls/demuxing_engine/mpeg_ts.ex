@@ -12,7 +12,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   defstruct @enforce_keys ++ [last_tracks_timestamps: %{}, ts_rollovers_count: 0]
 
   # @timestamp_range_size is 2^33
-  @timestamp_range_size 8_589_934_592
+  @timestamp_range_size_ns div(2 ** 33 * 1_000_000_000, 90_000)
 
   @type t :: %__MODULE__{
           demuxer: Demuxer.t()
@@ -109,7 +109,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp handle_possible_timestamps_rollover(%__MODULE__{} = demuxing_engine, track_id, packet) do
-    rollovers_offset = demuxing_engine.ts_rollovers_count * @timestamp_range_size
+    rollovers_offset = demuxing_engine.ts_rollovers_count * @timestamp_range_size_ns
 
     packet =
       packet
@@ -123,8 +123,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
         packet =
           packet
-          |> Map.update!(:pts, &add_offset_if_not_nil(&1, @timestamp_range_size))
-          |> Map.update!(:dts, &add_offset_if_not_nil(&1, @timestamp_range_size))
+          |> Map.update!(:pts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
+          |> Map.update!(:dts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
 
         {demuxing_engine, packet}
       else
