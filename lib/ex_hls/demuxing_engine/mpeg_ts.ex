@@ -85,8 +85,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
           {[], demuxer} ->
             {demuxing_engine.last_tden, demuxer}
 
-          {[id3], demuxer} ->
-            {parse_tden(id3.data), demuxer}
+          {[id3], new_demuxer} ->
+            if id3.pts < packet.pts do
+              {parse_tden(id3.data), new_demuxer}
+            else
+              {[], demuxer}
+            end
         end
 
       chunk = %ExHLS.Chunk{
