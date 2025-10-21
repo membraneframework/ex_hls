@@ -11,6 +11,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @enforce_keys [:demuxer]
   defstruct @enforce_keys ++ [track_timestamps_data: %{}]
 
+  # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
+  # generates up to 1/10th of ms error per 26.5 hours of stream which is acceptable in
+  # this context
   @timestamp_range_size_ns div(2 ** 33 * 1_000_000_000, 90_000)
 
   @type t :: %__MODULE__{
