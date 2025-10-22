@@ -42,15 +42,28 @@ defmodule ExHLS.Client.Utils do
   def stream_format_to_media_type(%RemoteStream{content_format: H264}), do: :video
   def stream_format_to_media_type(%RemoteStream{content_format: AAC}), do: :audio
 
-  @spec resolve_demuxing_engine_impl(String.t()) :: atom()
-  def resolve_demuxing_engine_impl(segment_uri) do
-    URI.parse(segment_uri).path
-    |> Path.extname()
-    |> case do
-      ".ts" -> DemuxingEngine.MPEGTS
-      ".m4s" -> DemuxingEngine.CMAF
-      ".mp4" -> DemuxingEngine.CMAF
-      _other -> raise "Unsupported segment URI extension: #{segment_uri |> inspect()}"
+  @spec resolve_demuxing_engine_impl(String.t(), :ts | :cmaf | nil) :: atom()
+  def resolve_demuxing_engine_impl(segment_uri, nil) do
+    case Path.extname(segment_uri) do
+      ".ts" <> _id ->
+        DemuxingEngine.MPEGTS
+
+      ".m4s" <> _id ->
+        DemuxingEngine.CMAF
+
+      ".mp4" <> _id ->
+        DemuxingEngine.CMAF
+
+      _other ->
+        Logger.warning("""
+        Unsupported segment URI extension: #{segment_uri |> inspect()}
+        Falling back to recognizing segment as MPEG-TS container file.
+        You can force recognizing segment as CMAF container file
+        by providing `segment_format: :cmaf` to `ExHLS.Client/2`.
+        """)
     end
   end
+
+  def resolve_demuxing_engine_impl(_segment_uri, :ts), do: DemuxingEngine.MPEGTS
+  def resolve_demuxing_engine_impl(_segment_uri, :cmaf), do: DemuxingEngine.CMAF
 end

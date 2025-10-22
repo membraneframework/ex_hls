@@ -24,7 +24,8 @@ defmodule ExHLS.Client.VOD do
     :end_stream_executed?,
     :stream_ended_by_media_type,
     :how_much_to_skip_ms,
-    :skipped_segments_cumulative_duration_ms
+    :skipped_segments_cumulative_duration_ms,
+    :segment_format
   ]
 
   defstruct @enforce_keys
@@ -37,8 +38,9 @@ defmodule ExHLS.Client.VOD do
   By default, it uses `DemuxingEngine.MPEGTS` as the demuxing engine implementation.
   """
 
-  @spec new(String.t(), ExM3U8.MediaPlaylist.t(), non_neg_integer()) :: client()
-  def new(media_playlist_url, media_playlist, how_much_to_skip_ms) do
+  @spec new(String.t(), ExM3U8.MediaPlaylist.t(), non_neg_integer(), :ts | :cmaf | nil) ::
+          client()
+  def new(media_playlist_url, media_playlist, how_much_to_skip_ms, segment_format) do
     :ok = generate_discontinuity_warnings(media_playlist)
 
     last_timestamps = %{audio: %{returned: nil, read: nil}, video: %{returned: nil, read: nil}}
@@ -54,7 +56,8 @@ defmodule ExHLS.Client.VOD do
       end_stream_executed?: false,
       stream_ended_by_media_type: %{audio: false, video: false},
       how_much_to_skip_ms: how_much_to_skip_ms,
-      skipped_segments_cumulative_duration_ms: nil
+      skipped_segments_cumulative_duration_ms: nil,
+      segment_format: segment_format
     }
     |> skip_segments()
   end
@@ -279,7 +282,7 @@ defmodule ExHLS.Client.VOD do
   end
 
   defp ensure_demuxing_engine_resolved(%{demuxing_engine: nil} = client, segment_uri) do
-    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri)
+    demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri, client.segment_format)
 
     %{
       client
