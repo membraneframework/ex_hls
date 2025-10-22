@@ -1,4 +1,4 @@
-defmodule Client.Test do
+defmodule ExHLS.Client.Test do
   use ExUnit.Case, async: true
 
   alias ExHLS.Client
