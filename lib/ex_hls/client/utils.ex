@@ -6,16 +6,31 @@ defmodule ExHLS.Client.Utils do
   alias ExHLS.DemuxingEngine
   alias Membrane.{AAC, H264, RemoteStream}
 
+  @debug_verbose Application.compile_env(:ex_hls, :debug_verbose, false)
+
+  defmacro debug_verbose(message) do
+    if @debug_verbose do
+      quote do
+        require Logger
+        Logger.debug(unquote(message))
+      end
+    else
+      quote do
+        :ok
+      end
+    end
+  end
+
   @spec download_or_read_file!(String.t()) :: binary()
   def download_or_read_file!(uri_or_path) do
     case URI.parse(uri_or_path).host do
       nil ->
         :ok = await_until_file_exists!(uri_or_path)
-        Logger.debug("[ExHLS.Client] opening #{uri_or_path}")
+        debug_verbose("[ExHLS.Client] opening #{uri_or_path}")
         File.read!(uri_or_path)
 
       _host ->
-        Logger.debug("[ExHLS.Client] downloading #{uri_or_path}")
+        debug_verbose("[ExHLS.Client] downloading #{uri_or_path}")
         %{status: 200, body: body} = Req.get!(uri_or_path)
         body
     end

@@ -6,6 +6,7 @@ defmodule ExHLS.Client do
 
   use Bunch.Access
 
+  require ExHLS.Client.Utils, as: Utils
   require Logger
 
   alias __MODULE__.{Live, Utils, VOD}
@@ -63,6 +64,11 @@ defmodule ExHLS.Client do
       |> Map.new()
 
     root_playlist_raw_content = Utils.download_or_read_file!(url)
+
+    Utils.debug_verbose("""
+    [ExHLS.Client] Downloaded root playlist from #{url}. Root playlist content:
+    #{root_playlist_raw_content}
+    """)
 
     multivariant_playlist =
       root_playlist_raw_content |> ExM3U8.deserialize_multivariant_playlist!([])

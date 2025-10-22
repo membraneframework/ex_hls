@@ -109,6 +109,15 @@ To pop only single elements from the stream containing ExHLS Chunks, you can use
 
 Note: If the HLS playlist type is Live (not VoD), you can generate stream from single `ExHLS.Client` instance only once and only from the process, that created that `ExHLS.Client`. If you want to genereate more streams with Live HLS, you have to create a new `ExHLS.Client` each time.
 
+### Debugging
+
+If you want to see more detailed logs about how `ex_hls` works, add the following line to the config file
+of your application:
+
+```elixir
+config :ex_hls, debug_verbose: true
+```
+
 ## Copyright and License
 
 Copyright 2025, [Software Mansion](https://swmansion.com/?utm_source=git&utm_medium=readme&utm_campaign=ex_hls)
