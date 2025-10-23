@@ -23,7 +23,8 @@ defmodule ExHLS.Client do
     :vod_client,
     :live_reader,
     :live_forwarder,
-    :how_much_to_skip_ms
+    :how_much_to_skip_ms,
+    :segment_format
   ]
 
   defstruct @enforce_keys
@@ -51,16 +52,29 @@ defmodule ExHLS.Client do
   of the beginning of the stream should be skipped. This option is only supported
   when the HLS stream is in the VoD mode. Defaults to `0`.
 
+  Apart from that you can also pass `:segment_format` to force treating HLS segments
+  as either `MPEG-TS` or `CMAF` container files. If you don't provide this option,
+  the client will treat HLS segments based on the extension in their name,
+  falling back `MPEG-TS` if the cannot recognize the extension.
+
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
   To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
   function.
   """
-  @spec new(String.t(), parent_process: pid(), how_much_to_skip_ms: non_neg_integer()) :: client()
+  @spec new(String.t(),
+          parent_process: pid(),
+          how_much_to_skip_ms: non_neg_integer(),
+          segment_format: :ts | :cmaf
+        ) :: client()
   def new(url, opts \\ []) do
-    %{parent_process: parent_process, how_much_to_skip_ms: how_much_to_skip_ms} =
+    %{
+      parent_process: parent_process,
+      how_much_to_skip_ms: how_much_to_skip_ms,
+      segment_format: segment_format
+    } =
       opts
-      |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0)
+      |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0, segment_format: nil)
       |> Map.new()
 
     root_playlist_raw_content = Utils.download_or_read_file!(url)
@@ -85,7 +99,8 @@ defmodule ExHLS.Client do
       vod_client: nil,
       live_reader: nil,
       live_forwarder: nil,
-      how_much_to_skip_ms: how_much_to_skip_ms
+      how_much_to_skip_ms: how_much_to_skip_ms,
+      segment_format: segment_format
     }
     |> maybe_resolve_media_playlist()
   end
@@ -115,7 +130,8 @@ defmodule ExHLS.Client do
         ExHLS.Client.VOD.new(
           client.media_playlist_url,
           client.media_playlist,
-          client.how_much_to_skip_ms
+          client.how_much_to_skip_ms,
+          client.segment_format
         )
 
       %{client | vod_client: vod_client, hls_mode: :vod}
@@ -134,7 +150,14 @@ defmodule ExHLS.Client do
       end
 
       {:ok, forwarder} = ExHLS.Client.Live.Forwarder.start_link(client.parent_process)
-      {:ok, reader} = ExHLS.Client.Live.Reader.start_link(client.media_playlist_url, forwarder)
+
+      {:ok, reader} =
+        ExHLS.Client.Live.Reader.start_link(
+          client.media_playlist_url,
+          forwarder,
+          client.segment_format
+        )
+
       %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}
     end
   end
@@ -191,7 +214,12 @@ defmodule ExHLS.Client do
 
   defp do_choose_variant(%__MODULE__{} = client, variant_id) do
     chosen_variant = get_variants(client) |> Map.fetch!(variant_id)
-    media_playlist_url = Path.join(client.base_url, chosen_variant.uri)
+
+    media_playlist_url =
+      case URI.new!(chosen_variant.uri).host do
+        nil -> Path.join(client.base_url, chosen_variant.uri)
+        _some_host -> chosen_variant.uri
+      end
 
     media_playlist =
       media_playlist_url
