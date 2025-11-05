@@ -99,8 +99,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with {id3_track_id, _stream_description} <-
            demuxer.pmt.streams
            |> Enum.find(fn {_pid, stream_description} ->
-             stream_description.stream_type ==
-               :METADATA_IN_PES
+             stream_description.stream_type == :METADATA_IN_PES
            end),
          {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
          true <- id3.pts <= packet_pts do
