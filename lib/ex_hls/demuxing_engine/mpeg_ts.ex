@@ -72,8 +72,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
-    with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id),
-         {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts) do
+    with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
+      {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts)
       tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
 
       chunk = %ExHLS.Chunk{
