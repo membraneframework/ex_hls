@@ -216,8 +216,8 @@ defmodule ExHLS.Client.Test do
     chunks = Client.generate_stream(client) |> Enum.take(1)
     [video_chunk | _rest_video_chunks] = chunks
 
-    assert %{pts_ms: 11081, dts_ms: 11001} = video_chunk
-    assert byte_size(video_chunk.payload) == 28699
+    assert %{pts_ms: 11_081, dts_ms: 11_001} = video_chunk
+    assert byte_size(video_chunk.payload) == 28_699
 
     assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 21, 172, 217, 65, 224, 143, 235, 1, 106,
              12, 2, 13, 110, 0, 0, 9, 154, 0, 1, 224, 0, 30, 44, 91, 44, 0, 0, 0, 1, 104, 234,
