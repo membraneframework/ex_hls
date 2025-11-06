@@ -3,19 +3,20 @@ defmodule ExHLS.Client.Live.Reader do
 
   use GenServer
 
+  require ExHLS.Client.Utils, as: Utils
   require Logger
 
   alias ExHLS.Client.Live.Forwarder
-  alias ExHLS.Client.Utils
-
   alias ExM3U8.Tags.{MediaInit, Segment}
 
-  @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil) :: {:ok, pid()} | {:error, any()}
-  def start_link(media_playlist_url, forwarder, segment_format) do
+  @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil, boolean()) ::
+          {:ok, pid()} | {:error, any()}
+  def start_link(media_playlist_url, forwarder, segment_format, ultra_low_latency?) do
     GenServer.start_link(__MODULE__, %{
       media_playlist_url: media_playlist_url,
       forwarder: forwarder,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     })
   end
 
@@ -23,7 +24,8 @@ defmodule ExHLS.Client.Live.Reader do
   def init(%{
         media_playlist_url: media_playlist_url,
         forwarder: forwarder,
-        segment_format: segment_format
+        segment_format: segment_format,
+        ultra_low_latency?: ultra_low_latency?
       }) do
     state = %{
       forwarder: forwarder,
@@ -40,7 +42,8 @@ defmodule ExHLS.Client.Live.Reader do
       playlist_check_scheduled?: false,
       timestamp_offset: nil,
       playing_started?: false,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     }
 
     {:ok, state, {:continue, :setup}}
@@ -62,7 +65,7 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp check_media_playlist(state) do
-    Logger.debug("[ExHLS.Client] Checking media playlist at #{state.media_playlist_url}")
+    Utils.debug_verbose("[ExHLS.Client] Checking media playlist at #{state.media_playlist_url}")
 
     media_playlist =
       state.media_playlist_url
@@ -104,6 +107,10 @@ defmodule ExHLS.Client.Live.Reader do
       true ->
         state
     end
+  end
+
+  defp should_start_playing?(%{ultra_low_latency?: true}) do
+    true
   end
 
   defp should_start_playing?(state) do
@@ -166,12 +173,40 @@ defmodule ExHLS.Client.Live.Reader do
     {media_inits, %{state | media_init_downloaded?: true}}
   end
 
-  defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: nil} = state) do
+  # in the ultra low latency mode it skips to the most recent segment
+  defp next_segment_to_download_seq_num(
+         %{max_downloaded_seq_num: nil, ultra_low_latency?: true} = state
+       ) do
     how_many_segments =
       state.media_playlist.timeline
       |> Enum.count(&match?(%Segment{}, &1))
 
     state.media_playlist.info.media_sequence + how_many_segments - 1
+  end
+
+  defp next_segment_to_download_seq_num(
+         %{max_downloaded_seq_num: nil, ultra_low_latency?: false} = state
+       ) do
+    {segments_with_end_times, duration_sum} =
+      state.media_playlist.timeline
+      |> Enum.flat_map_reduce(0, fn
+        %Segment{} = segment, duration_acc ->
+          duration_acc = duration_acc + segment.duration
+          {[{segment, duration_acc}], duration_acc}
+
+        _other_tag, duration_acc ->
+          {[], duration_acc}
+      end)
+
+    start_time = duration_sum - 2 * state.media_playlist.info.target_duration
+
+    segment_index =
+      segments_with_end_times
+      |> Enum.find_index(fn {_segment, segment_end_time} ->
+        start_time <= segment_end_time
+      end)
+
+    segment_index + state.media_playlist.info.media_sequence
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
@@ -209,12 +244,10 @@ defmodule ExHLS.Client.Live.Reader do
         _some_host -> segment.uri
       end
 
-    Logger.debug("[ExHLS.Client] Downloading segment: #{uri}")
+    Utils.debug_verbose("[ExHLS.Client] Downloading segment: #{uri}")
 
     segment_content = Utils.download_or_read_file!(uri)
-
     state = maybe_resolve_demuxing_engine(segment.uri, state)
-
     consume_segment_content(segment_content, state)
   end
 

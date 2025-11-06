@@ -2,12 +2,19 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @moduledoc false
   @behaviour ExHLS.DemuxingEngine
 
+  use Bunch.Access
+
   require Logger
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
   @enforce_keys [:demuxer, :last_tden_tag]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [track_timestamps_data: %{}]
+
+  # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
+  # generates up to 1/10th of ms error per 26.5 hours of stream which is acceptable in
+  # this context
+  @timestamp_range_size_ns div(2 ** 33 * 1_000_000_000, 90_000)
 
   @type t :: %__MODULE__{
           demuxer: Demuxer.t(),
@@ -75,6 +82,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts)
       tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
+      {demuxing_engine, packet} =
+        %{demuxing_engine | demuxer: demuxer, last_tden_tag: tden_tag}
+        |> handle_possible_timestamps_rollover(track_id, packet)
 
       chunk = %ExHLS.Chunk{
         payload: packet.data,
@@ -88,7 +98,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         }
       }
 
-      {:ok, chunk, %{demuxing_engine | demuxer: demuxer, last_tden_tag: tden_tag}}
+      {:ok, chunk, demuxing_engine}
     else
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
@@ -129,5 +139,62 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   def end_stream(%__MODULE__{} = demuxing_engine) do
     demuxer = Demuxer.end_of_stream(demuxing_engine.demuxer)
     %{demuxing_engine | demuxer: demuxer}
+  end
+
+  defp handle_possible_timestamps_rollover(%__MODULE__{} = demuxing_engine, track_id, packet) do
+    demuxing_engine = demuxing_engine |> maybe_init_track_timestamp_data(track_id)
+
+    %{rollovers_count: rollovers_count, last_pts: last_pts, last_dts: last_dts} =
+      demuxing_engine.track_timestamps_data[track_id]
+
+    rollovers_offset = rollovers_count * @timestamp_range_size_ns
+
+    packet =
+      packet
+      |> Map.update!(:pts, &add_offset_if_not_nil(&1, rollovers_offset))
+      |> Map.update!(:dts, &add_offset_if_not_nil(&1, rollovers_offset))
+
+    {demuxing_engine, packet} =
+      with last_ts when last_ts != nil <- last_dts || last_pts,
+           true <- last_ts > (packet.dts || packet.pts) do
+        demuxing_engine =
+          demuxing_engine
+          |> update_in([:track_timestamps_data, track_id, :rollovers_count], &(&1 + 1))
+
+        packet =
+          packet
+          |> Map.update!(:pts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
+          |> Map.update!(:dts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
+
+        {demuxing_engine, packet}
+      else
+        _other -> {demuxing_engine, packet}
+      end
+
+    demuxing_engine =
+      demuxing_engine
+      |> put_in([:track_timestamps_data, track_id, :last_pts], packet.pts)
+      |> put_in([:track_timestamps_data, track_id, :last_dts], packet.dts)
+
+    {demuxing_engine, packet}
+  end
+
+  defp add_offset_if_not_nil(nil, _offset), do: nil
+  defp add_offset_if_not_nil(value, offset), do: value + offset
+
+  defp maybe_init_track_timestamp_data(%__MODULE__{} = demuxing_engine, track_id) do
+    demuxing_engine
+    |> Map.update!(
+      :track_timestamps_data,
+      &Map.put_new_lazy(&1, track_id, fn -> default_track_timestamp_data() end)
+    )
+  end
+
+  defp default_track_timestamp_data() do
+    %{
+      rollovers_count: 0,
+      last_pts: nil,
+      last_dts: nil
+    }
   end
 end
