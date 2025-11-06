@@ -24,7 +24,8 @@ defmodule ExHLS.Client do
     :live_reader,
     :live_forwarder,
     :how_much_to_skip_ms,
-    :segment_format
+    :segment_format,
+    :ultra_low_latency?
   ]
 
   defstruct @enforce_keys
@@ -57,6 +58,12 @@ defmodule ExHLS.Client do
   the client will treat HLS segments based on the extension in their name,
   falling back `MPEG-TS` if the cannot recognize the extension.
 
+  Passing `ultra_low_latency?: true` option turns on ultra low latency mode of the client.
+  In this mode the clien will start playing the playlist ss fast as possible,
+  without waiting for a segments buffer to fill, which is not compliant with the HLS
+  specification and might cause playback stalls.
+  The ultra low latency mode only applies to live playlists and is turned off by default.
+
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
   To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
@@ -71,10 +78,16 @@ defmodule ExHLS.Client do
     %{
       parent_process: parent_process,
       how_much_to_skip_ms: how_much_to_skip_ms,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     } =
       opts
-      |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0, segment_format: nil)
+      |> Keyword.validate!(
+        parent_process: self(),
+        how_much_to_skip_ms: 0,
+        segment_format: nil,
+        ultra_low_latency?: false
+      )
       |> Map.new()
 
     root_playlist_raw_content = Utils.download_or_read_file!(url)
@@ -100,7 +113,8 @@ defmodule ExHLS.Client do
       live_reader: nil,
       live_forwarder: nil,
       how_much_to_skip_ms: how_much_to_skip_ms,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     }
     |> maybe_resolve_media_playlist()
   end
@@ -155,7 +169,8 @@ defmodule ExHLS.Client do
         ExHLS.Client.Live.Reader.start_link(
           client.media_playlist_url,
           forwarder,
-          client.segment_format
+          client.segment_format,
+          client.ultra_low_latency?
         )
 
       %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}

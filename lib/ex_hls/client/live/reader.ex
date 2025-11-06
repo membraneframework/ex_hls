@@ -9,12 +9,14 @@ defmodule ExHLS.Client.Live.Reader do
   alias ExHLS.Client.Live.Forwarder
   alias ExM3U8.Tags.{MediaInit, Segment}
 
-  @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil) :: {:ok, pid()} | {:error, any()}
-  def start_link(media_playlist_url, forwarder, segment_format) do
+  @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil, boolean()) ::
+          {:ok, pid()} | {:error, any()}
+  def start_link(media_playlist_url, forwarder, segment_format, ultra_low_latency?) do
     GenServer.start_link(__MODULE__, %{
       media_playlist_url: media_playlist_url,
       forwarder: forwarder,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     })
   end
 
@@ -22,7 +24,8 @@ defmodule ExHLS.Client.Live.Reader do
   def init(%{
         media_playlist_url: media_playlist_url,
         forwarder: forwarder,
-        segment_format: segment_format
+        segment_format: segment_format,
+        ultra_low_latency?: ultra_low_latency?
       }) do
     state = %{
       forwarder: forwarder,
@@ -39,7 +42,8 @@ defmodule ExHLS.Client.Live.Reader do
       playlist_check_scheduled?: false,
       timestamp_offset: nil,
       playing_started?: false,
-      segment_format: segment_format
+      segment_format: segment_format,
+      ultra_low_latency?: ultra_low_latency?
     }
 
     {:ok, state, {:continue, :setup}}
@@ -165,11 +169,37 @@ defmodule ExHLS.Client.Live.Reader do
     {media_inits, %{state | media_init_downloaded?: true}}
   end
 
-  defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: nil} = state) do
+  defp next_segment_to_download_seq_num(
+         %{max_downloaded_seq_num: nil, ultra_low_latency?: false} = state
+       ) do
+    {segments_with_end_times, duration_sum} =
+      state.media_playlist.timeline
+      |> Enum.flat_map_reduce(0, fn
+        %Segment{} = segment, duration_acc ->
+          duration_acc = duration_acc + segment.duration
+          {[{segment, duration_acc}], duration_acc}
+
+        _other_tag, duration_acc ->
+          {[], duration_acc}
+      end)
+
+    start_time = duration_sum - 2 * state.media_playlist.info.target_duration
+
+    segment_index =
+      segments_with_end_times
+      |> Enum.find_index(fn {_segment, segment_end_time} ->
+        start_time <= segment_end_time
+      end)
+
+    segment_index + state.media_playlist.info.media_sequence
+  end
+
+  defp next_segment_to_download_seq_num(
+         %{max_downloaded_seq_num: nil, ultra_low_latency?: true} = state
+       ) do
     how_many_segments =
       state.media_playlist.timeline
-      |> Enum.filter(&match?(%Segment{}, &1))
-      |> Enum.count()
+      |> Enum.count(&match?(%Segment{}, &1))
 
     state.media_playlist.info.media_sequence + how_many_segments - 1
   end
