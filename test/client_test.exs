@@ -9,6 +9,7 @@ defmodule ExHLS.Client.Test do
   @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
   @mpegts_only_video_url @fixtures <> "mpeg_ts_only_video/output_playlist.m3u8"
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+  @mpegts_live_url "./test/fixtures/mpeg_ts_live/output_playlist.m3u8"
 
   describe "if client reads video and audio chunks of the HLS" do
     test "(MPEGTS) stream" do
@@ -201,6 +202,28 @@ defmodule ExHLS.Client.Test do
     assert <<255, 241, 80, 128, 47, 63, 252, 33, 10, 204, 43, 253, 251, 213, 30, 152, 129, 48, 80,
              38, 22, 18, 5, 130, 129, 113, 34, 92, 36, 20, 25, 9, 2, 193, 64, 144, 68, 36, 17, 75,
              215, 198, 77, 184, 229, 170, 157, 115, 169, 223>> <> _rest = audio_chunk.payload
+  end
+
+  test "(MPEGTS) stream with ultra low latency mode" do
+    client = Client.new(@mpegts_live_url, ultra_low_latency?: true)
+
+    assert Client.get_variants(client) == %{}
+    assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
+
+    assert [%Membrane.RemoteStream{content_format: Membrane.H264, type: :bytestream}] =
+             tracks_info |> Map.values()
+
+    chunks = Client.generate_stream(client) |> Enum.take(1)
+    [video_chunk | _rest_video_chunks] = chunks
+
+    assert %{pts_ms: 11081, dts_ms: 11001} = video_chunk
+    assert byte_size(video_chunk.payload) == 28699
+
+    assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 21, 172, 217, 65, 224, 143, 235, 1, 106,
+             12, 2, 13, 110, 0, 0, 9, 154, 0, 1, 224, 0, 30, 44, 91, 44, 0, 0, 0, 1, 104, 234,
+             225, 178, 200, 176, 0, 0>> <> _rest = video_chunk.payload
+
+    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
   end
 
   defp assert_chunks_are_in_proper_order(chunks) do

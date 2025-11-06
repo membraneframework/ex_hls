@@ -1,0 +1,10 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:5.760933,
+video_segment_000.ts
+#EXTINF:3.840633,
+video_segment_001.ts
+#EXTINF:0.400111,
+video_segment_002.ts

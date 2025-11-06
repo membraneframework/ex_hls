@@ -59,10 +59,10 @@ defmodule ExHLS.Client do
   falling back `MPEG-TS` if the cannot recognize the extension.
 
   Passing `ultra_low_latency?: true` option turns on ultra low latency mode of the client.
-  In this mode the client starts playing the playlist as fast as possible,
-  without waiting for a segments buffer to fill, which is not compliant with the HLS
-  specification and might cause playback stalls.
-  The ultra low latency mode only applies to live playlists and it is turned off by default.
+  In this mode the client starts playing the playlist as fast as possible, and skips to the most
+  recent buffer.
+  Please note that this is not compliant with the HLS specification and might cause playback stalls.
+  The ultra low latency mode is turned off by default.
 
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.

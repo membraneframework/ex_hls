@@ -109,6 +109,10 @@ defmodule ExHLS.Client.Live.Reader do
     end
   end
 
+  defp should_start_playing?(%{ultra_low_latency?: true}) do
+    true
+  end
+
   defp should_start_playing?(state) do
     %ExM3U8.MediaPlaylist.Info{
       media_sequence: media_sequence,
@@ -169,6 +173,17 @@ defmodule ExHLS.Client.Live.Reader do
     {media_inits, %{state | media_init_downloaded?: true}}
   end
 
+  # in the ultra low latency mode it skips to the most recent segment
+  defp next_segment_to_download_seq_num(
+         %{max_downloaded_seq_num: nil, ultra_low_latency?: true} = state
+       ) do
+    how_many_segments =
+      state.media_playlist.timeline
+      |> Enum.count(&match?(%Segment{}, &1))
+
+    state.media_playlist.info.media_sequence + how_many_segments - 1
+  end
+
   defp next_segment_to_download_seq_num(
          %{max_downloaded_seq_num: nil, ultra_low_latency?: false} = state
        ) do
@@ -192,16 +207,6 @@ defmodule ExHLS.Client.Live.Reader do
       end)
 
     segment_index + state.media_playlist.info.media_sequence
-  end
-
-  defp next_segment_to_download_seq_num(
-         %{max_downloaded_seq_num: nil, ultra_low_latency?: true} = state
-       ) do
-    how_many_segments =
-      state.media_playlist.timeline
-      |> Enum.count(&match?(%Segment{}, &1))
-
-    state.media_playlist.info.media_sequence + how_many_segments - 1
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
