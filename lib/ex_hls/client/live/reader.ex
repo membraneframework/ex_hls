@@ -3,11 +3,10 @@ defmodule ExHLS.Client.Live.Reader do
 
   use GenServer
 
+  require ExHLS.Client.Utils, as: Utils
   require Logger
 
   alias ExHLS.Client.Live.Forwarder
-  alias ExHLS.Client.Utils
-
   alias ExM3U8.Tags.{MediaInit, Segment}
 
   @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil) :: {:ok, pid()} | {:error, any()}
@@ -62,7 +61,7 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp check_media_playlist(state) do
-    Logger.debug("[ExHLS.Client] Checking media playlist at #{state.media_playlist_url}")
+    Utils.debug_verbose("[ExHLS.Client] Checking media playlist at #{state.media_playlist_url}")
 
     media_playlist =
       state.media_playlist_url
@@ -210,12 +209,10 @@ defmodule ExHLS.Client.Live.Reader do
         _some_host -> segment.uri
       end
 
-    Logger.debug("[ExHLS.Client] Downloading segment: #{uri}")
+    Utils.debug_verbose("[ExHLS.Client] Downloading segment: #{uri}")
 
     segment_content = Utils.download_or_read_file!(uri)
-
     state = maybe_resolve_demuxing_engine(segment.uri, state)
-
     consume_segment_content(segment_content, state)
   end
 
