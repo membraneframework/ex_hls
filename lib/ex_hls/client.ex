@@ -60,7 +60,7 @@ defmodule ExHLS.Client do
 
   Passing `ultra_low_latency?: true` option turns on ultra low latency mode of the client.
   In this mode the client starts playing the playlist as fast as possible, and skips to the most
-  recent buffer.
+  recent segment
   Please note that this is not compliant with the HLS specification and might cause playback stalls.
   The ultra low latency mode is turned off by default.
 
