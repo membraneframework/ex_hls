@@ -82,6 +82,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
       {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts)
       tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
+
       {demuxing_engine, packet} =
         %{demuxing_engine | demuxer: demuxer, last_tden_tag: tden_tag}
         |> handle_possible_timestamps_rollover(track_id, packet)
