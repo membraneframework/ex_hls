@@ -27,12 +27,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   # different demuxing engines
   def new(_timestamp_offset_ms) do
     demuxer = Demuxer.new()
-
-    # we need to explicitly override that `waiting_random_access_indicator` as otherwise Demuxer
-    # discards all the input data
-    # TODO - figure out how to do it properly
-    demuxer = %{demuxer | waiting_random_access_indicator: false}
-
     %__MODULE__{demuxer: demuxer, last_tden_tag: nil}
   end
 
