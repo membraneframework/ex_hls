@@ -123,10 +123,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp parse_tden_tag(payload) do
-    with {pos, len} <- :binary.match(payload, "TDEN"),
-         trailing_bytes <- :binary.part(payload, pos + len, byte_size(payload) - (pos + len)),
-         <<size::integer-size(4)-unit(8), _flags::16, rest::binary>> <- trailing_bytes,
-         <<_3, text::binary-size(size - 2), 0, _rest::binary>> <- rest do
+    with {pos, _len} <- :binary.match(payload, "TDEN"),
+         <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
+         <<size::integer-size(4)-unit(8), _flags::16, _3, text::binary-size(size - 2), 0, _rest::binary>> <- tden do
       text
     else
       _error -> nil
