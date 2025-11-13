@@ -8,7 +8,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
-  @enforce_keys [:demuxer, :last_tden_tag]
+  @enforce_keys [:demuxer, :last_tden_tag, :packets]
   defstruct @enforce_keys ++ [track_timestamps_data: %{}]
 
   # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
@@ -18,7 +18,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @type t :: %__MODULE__{
           demuxer: Demuxer.t(),
-          last_tden_tag: String.t() | nil
+          last_tden_tag: String.t() | nil,
+          packets: %{non_neg_integer() => MPEG.TS.Demuxer.Container.t()}
         }
 
   @impl true
@@ -27,25 +28,33 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   # different demuxing engines
   def new(_timestamp_offset_ms) do
     demuxer = Demuxer.new()
-    %__MODULE__{demuxer: demuxer, last_tden_tag: nil}
+    %__MODULE__{demuxer: demuxer, last_tden_tag: nil, packets: %{}}
   end
 
   @impl true
   def feed!(%__MODULE__{} = demuxing_engine, binary) do
-    demuxing_engine
-    |> Map.update!(:demuxer, &Demuxer.push_buffer(&1, binary))
+    {new_packets, demuxer} = Demuxer.demux(demuxing_engine.demuxer, binary)
+    Enum.each(new_packets, fn p -> nil end)
+
+    all_packets =
+      Enum.reduce(new_packets, demuxing_engine.packets, fn new_packet, all_packets ->
+        packets_for_pid = Map.get(all_packets, new_packet.pid, []) ++ [new_packet]
+        put_in(all_packets[new_packet.pid], packets_for_pid)
+      end)
+
+    %{demuxing_engine | demuxer: demuxer, packets: all_packets}
   end
 
   @impl true
   def get_tracks_info(%__MODULE__{} = demuxing_engine) do
-    with %{streams: streams} <- demuxing_engine.demuxer.pmt do
+    with %{streams: streams} <- demuxing_engine.demuxer do
       tracks_info =
         streams
         |> Enum.flat_map(fn
-          {id, %{stream_type: :AAC}} ->
+          {id, %{stream_type: :AAC_ADTS}} ->
             [{id, %RemoteStream{content_format: AAC}}]
 
-          {id, %{stream_type: :H264}} ->
+          {id, %{stream_type: :H264_AVC}} ->
             [{id, %RemoteStream{content_format: H264}}]
 
           {id, unsupported_stream_info} ->
@@ -71,48 +80,59 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
+  defp take_packets(demuxing_engine, track_id) do
+    case Map.get(demuxing_engine.packets, track_id) do
+      [packet | rest] ->
+        demuxing_engine = put_in(demuxing_engine.packets[track_id], rest)
+        {[packet], demuxing_engine}
+
+      _other ->
+        {[], demuxing_engine}
+    end
+  end
+
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
-    with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
-      {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts)
+    with {[packet], demuxing_engine} <- take_packets(demuxing_engine, track_id) do
+      {maybe_tden_tag, demuxing_engine} = maybe_read_tden_tag(demuxing_engine, packet.payload.pts)
       tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
 
       {demuxing_engine, packet} =
-        %{demuxing_engine | demuxer: demuxer, last_tden_tag: tden_tag}
+        %{demuxing_engine | last_tden_tag: tden_tag}
         |> handle_possible_timestamps_rollover(track_id, packet)
 
       chunk = %ExHLS.Chunk{
-        payload: packet.data,
-        pts_ms: packet.pts |> packet_ts_to_millis(),
-        dts_ms: packet.dts |> packet_ts_to_millis(),
+        payload: packet.payload.data,
+        pts_ms: packet.payload.pts |> packet_ts_to_millis(),
+        dts_ms: packet.payload.dts |> packet_ts_to_millis(),
         track_id: track_id,
         metadata: %{
-          discontinuity: packet.discontinuity,
-          is_aligned: packet.is_aligned,
+          discontinuity: packet.payload.discontinuity,
+          is_aligned: packet.payload.is_aligned,
           tden_tag: tden_tag
         }
       }
 
       {:ok, chunk, demuxing_engine}
     else
-      {[], demuxer} ->
-        {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
+      {[], demuxing_engine} ->
+        {:error, :empty_track_data, demuxing_engine}
     end
   end
 
-  defp maybe_read_tden_tag(demuxer, packet_pts) do
+  defp maybe_read_tden_tag(demuxing_engine, packet_pts) do
     with {id3_track_id, _stream_description} <-
-           demuxer.pmt.streams
+           demuxing_engine.demuxer.streams
            |> Enum.find(fn {_pid, stream_description} ->
              stream_description.stream_type == :METADATA_IN_PES
            end),
-         {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
-         true <- id3.pts <= packet_pts do
-      {parse_tden_tag(id3.data), demuxer}
+         {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
+         true <- id3.payload.pts <= packet_pts do
+      {parse_tden_tag(id3.data), demuxing_engine}
     else
-      nil -> {nil, demuxer}
-      {[], updated_demuxer} -> {nil, updated_demuxer}
-      false -> {nil, demuxer}
+      nil -> {nil, demuxing_engine}
+      {[], updated_demuxing_engine} -> {nil, updated_demuxing_engine}
+      false -> {nil, demuxing_engine}
     end
   end
 
@@ -132,7 +152,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def end_stream(%__MODULE__{} = demuxing_engine) do
-    demuxer = Demuxer.end_of_stream(demuxing_engine.demuxer)
+    {_flushed, demuxer} = Demuxer.flush(demuxing_engine.demuxer)
     %{demuxing_engine | demuxer: demuxer}
   end
 
@@ -144,32 +164,34 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
     rollovers_offset = rollovers_count * @timestamp_range_size_ns
 
-    packet =
-      packet
+    payload =
+      packet.payload
       |> Map.update!(:pts, &add_offset_if_not_nil(&1, rollovers_offset))
       |> Map.update!(:dts, &add_offset_if_not_nil(&1, rollovers_offset))
 
-    {demuxing_engine, packet} =
+    {demuxing_engine, payload} =
       with last_ts when last_ts != nil <- last_dts || last_pts,
-           true <- last_ts > (packet.dts || packet.pts) do
+           true <- last_ts > (payload.dts || payload.pts) do
         demuxing_engine =
           demuxing_engine
           |> update_in([:track_timestamps_data, track_id, :rollovers_count], &(&1 + 1))
 
-        packet =
-          packet
+        payload =
+          payload
           |> Map.update!(:pts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
           |> Map.update!(:dts, &add_offset_if_not_nil(&1, @timestamp_range_size_ns))
 
-        {demuxing_engine, packet}
+        {demuxing_engine, payload}
       else
-        _other -> {demuxing_engine, packet}
+        _other -> {demuxing_engine, payload}
       end
 
     demuxing_engine =
       demuxing_engine
-      |> put_in([:track_timestamps_data, track_id, :last_pts], packet.pts)
-      |> put_in([:track_timestamps_data, track_id, :last_dts], packet.dts)
+      |> put_in([:track_timestamps_data, track_id, :last_pts], payload.pts)
+      |> put_in([:track_timestamps_data, track_id, :last_dts], payload.dts)
+
+    packet = %{packet | payload: payload}
 
     {demuxing_engine, packet}
   end
