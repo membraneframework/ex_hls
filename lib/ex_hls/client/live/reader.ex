@@ -11,12 +11,12 @@ defmodule ExHLS.Client.Live.Reader do
 
   @spec start_link(String.t(), Forwarder.t(), :ts | :cmaf | nil, boolean()) ::
           {:ok, pid()} | {:error, any()}
-  def start_link(media_playlist_url, forwarder, segment_format, ultra_low_latency?) do
+  def start_link(media_playlist_url, forwarder, segment_format, live_edge_mode?) do
     GenServer.start_link(__MODULE__, %{
       media_playlist_url: media_playlist_url,
       forwarder: forwarder,
       segment_format: segment_format,
-      ultra_low_latency?: ultra_low_latency?
+      live_edge_mode?: live_edge_mode?
     })
   end
 
@@ -25,7 +25,7 @@ defmodule ExHLS.Client.Live.Reader do
         media_playlist_url: media_playlist_url,
         forwarder: forwarder,
         segment_format: segment_format,
-        ultra_low_latency?: ultra_low_latency?
+        live_edge_mode?: live_edge_mode?
       }) do
     state = %{
       forwarder: forwarder,
@@ -43,7 +43,7 @@ defmodule ExHLS.Client.Live.Reader do
       timestamp_offset: nil,
       playing_started?: false,
       segment_format: segment_format,
-      ultra_low_latency?: ultra_low_latency?
+      live_edge_mode?: live_edge_mode?
     }
 
     {:ok, state, {:continue, :setup}}
@@ -109,7 +109,7 @@ defmodule ExHLS.Client.Live.Reader do
     end
   end
 
-  defp should_start_playing?(%{ultra_low_latency?: true}) do
+  defp should_start_playing?(%{live_edge_mode?: true}) do
     true
   end
 
@@ -175,7 +175,7 @@ defmodule ExHLS.Client.Live.Reader do
 
   # in the ultra low latency mode it skips to the most recent segment
   defp next_segment_to_download_seq_num(
-         %{max_downloaded_seq_num: nil, ultra_low_latency?: true} = state
+         %{max_downloaded_seq_num: nil, live_edge_mode?: true} = state
        ) do
     how_many_segments =
       state.media_playlist.timeline
@@ -185,7 +185,7 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp next_segment_to_download_seq_num(
-         %{max_downloaded_seq_num: nil, ultra_low_latency?: false} = state
+         %{max_downloaded_seq_num: nil, live_edge_mode?: false} = state
        ) do
     {segments_with_end_times, duration_sum} =
       state.media_playlist.timeline

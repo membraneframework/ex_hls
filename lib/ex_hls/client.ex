@@ -25,7 +25,7 @@ defmodule ExHLS.Client do
     :live_forwarder,
     :how_much_to_skip_ms,
     :segment_format,
-    :ultra_low_latency?
+    :live_edge_mode?
   ]
 
   defstruct @enforce_keys
@@ -58,7 +58,7 @@ defmodule ExHLS.Client do
   the client will treat HLS segments based on the extension in their name,
   falling back `MPEG-TS` if the cannot recognize the extension.
 
-  Passing `ultra_low_latency?: true` option turns on ultra low latency mode of the client.
+  Passing `live_edge_mode?: true` option turns on ultra low latency mode of the client.
   In this mode the client starts playing the playlist as fast as possible, and skips to the most
   recent segment
   Please note that this is not compliant with the HLS specification and might cause playback stalls.
@@ -79,14 +79,14 @@ defmodule ExHLS.Client do
       parent_process: parent_process,
       how_much_to_skip_ms: how_much_to_skip_ms,
       segment_format: segment_format,
-      ultra_low_latency?: ultra_low_latency?
+      live_edge_mode?: live_edge_mode?
     } =
       opts
       |> Keyword.validate!(
         parent_process: self(),
         how_much_to_skip_ms: 0,
         segment_format: nil,
-        ultra_low_latency?: false
+        live_edge_mode?: false
       )
       |> Map.new()
 
@@ -114,7 +114,7 @@ defmodule ExHLS.Client do
       live_forwarder: nil,
       how_much_to_skip_ms: how_much_to_skip_ms,
       segment_format: segment_format,
-      ultra_low_latency?: ultra_low_latency?
+      live_edge_mode?: live_edge_mode?
     }
     |> maybe_resolve_media_playlist()
   end
@@ -170,7 +170,7 @@ defmodule ExHLS.Client do
           client.media_playlist_url,
           forwarder,
           client.segment_format,
-          client.ultra_low_latency?
+          client.live_edge_mode?
         )
 
       %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}

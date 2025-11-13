@@ -204,8 +204,8 @@ defmodule ExHLS.Client.Test do
              215, 198, 77, 184, 229, 170, 157, 115, 169, 223>> <> _rest = audio_chunk.payload
   end
 
-  test "(MPEGTS) stream with ultra low latency mode" do
-    client = Client.new(@mpegts_live_url, ultra_low_latency?: true)
+  test "(MPEGTS) stream with live edge mode" do
+    client = Client.new(@mpegts_live_url, live_edge_mode?: true)
 
     assert Client.get_variants(client) == %{}
     assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
