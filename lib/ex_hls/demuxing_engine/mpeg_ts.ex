@@ -3,6 +3,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @behaviour ExHLS.DemuxingEngine
 
   use Bunch.Access
+  use Bunch
 
   require Logger
   alias Membrane.{AAC, H264, RemoteStream}
@@ -107,18 +108,19 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp maybe_read_tden_tag(demuxer, packet_pts) do
-    with {id3_track_id, _stream_description} <-
-           demuxer.pmt.streams
-           |> Enum.find(fn {_pid, stream_description} ->
-             stream_description.stream_type == :METADATA_IN_PES
-           end),
-         {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
-         true <- id3.pts <= packet_pts do
+    withl no_id3_stream:
+            {id3_track_id, _stream_description} <-
+              demuxer.pmt.streams
+              |> Enum.find(fn {_pid, stream_description} ->
+                stream_description.stream_type == :METADATA_IN_PES
+              end),
+          no_id3_data: {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
+          id3_not_in_timerange: true <- id3.pts <= packet_pts do
       {parse_tden_tag(id3.data), demuxer}
     else
-      nil -> {nil, demuxer}
-      {[], updated_demuxer} -> {nil, updated_demuxer}
-      false -> {nil, demuxer}
+      no_id3_stream: nil -> {nil, demuxer}
+      no_id3_data: {[], updated_demuxer} -> {nil, updated_demuxer}
+      id3_not_in_timerange: false -> {nil, demuxer}
     end
   end
 
