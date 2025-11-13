@@ -257,7 +257,7 @@ defmodule ExHLS.Client.Test do
              12, 2, 13, 110, 0, 0, 9, 154, 0, 1, 224, 0, 30, 44, 91, 44, 0, 0, 0, 1, 104, 234,
              225, 178, 200, 176, 0, 0>> <> _rest = video_chunk.payload
 
-    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
+    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
   end
 
   defp assert_chunks_are_in_proper_order(chunks) do
