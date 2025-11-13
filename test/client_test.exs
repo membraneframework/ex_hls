@@ -144,17 +144,13 @@ defmodule ExHLS.Client.Test do
     first_audio_chunk_after_tden =
       Enum.find(
         chunks,
-        &(&1.metadata.tden_tag != nil and
-            &1.media_type ==
-              :audio)
+        &(&1.metadata.tden_tag != nil and &1.media_type == :audio)
       )
 
     first_video_chunk_after_tden =
       Enum.find(
         chunks,
-        &(&1.metadata.tden_tag != nil and
-            &1.media_type ==
-              :video)
+        &(&1.metadata.tden_tag != nil and &1.media_type == :video)
       )
 
     assert first_audio_chunk_after_tden.pts_ms == 3328
