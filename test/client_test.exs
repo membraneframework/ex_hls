@@ -133,7 +133,6 @@ defmodule ExHLS.Client.Test do
     assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
   end
 
-  @tag :sometag
   test "(MPEGTS) stream with ID3v2.4 TDEN tag" do
     client = Client.new(@mpegts_with_tden_url)
 
