@@ -26,7 +26,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS.Test do
 
     demuxer = %{
       waiting_random_access_indicator: nil,
-      packet_buffers: %{1 => packets, 2 => packets}
+      packet_buffers: %{1 => packets, 2 => packets},
+      pmt: %{streams: %{}}
     }
 
     new = fn -> demuxer end

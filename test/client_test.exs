@@ -4,10 +4,11 @@ defmodule ExHLS.Client.Test do
   alias ExHLS.Client
   alias Membrane.{AAC, H264, RemoteStream}
 
-  @fixtures "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/master/test/fixtures/"
+  @fixtures "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/"
   @fmp4_url @fixtures <> "fmp4/output.m3u8"
   @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
   @mpegts_only_video_url @fixtures <> "mpeg_ts_only_video/output_playlist.m3u8"
+  @mpegts_with_tden_url "test/fixtures/mpeg_ts_with_tden/output_playlist.m3u8"
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @mpegts_live_url "./test/fixtures/mpeg_ts_live/output_playlist.m3u8"
 
@@ -129,7 +130,35 @@ defmodule ExHLS.Client.Test do
              183, 150, 44, 216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114,
              101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
 
-    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
+    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
+  end
+
+  test "(MPEGTS) stream with ID3v2.4 TDEN tag" do
+    client = Client.new(@mpegts_with_tden_url)
+
+    assert Client.get_variants(client) == %{}
+
+    chunks = Client.generate_stream(client) |> Enum.take(381)
+
+    first_audio_chunk_after_tden =
+      Enum.find(
+        chunks,
+        &(&1.metadata.tden_tag != nil and &1.media_type == :audio)
+      )
+
+    first_video_chunk_after_tden =
+      Enum.find(
+        chunks,
+        &(&1.metadata.tden_tag != nil and &1.media_type == :video)
+      )
+
+    assert first_audio_chunk_after_tden.pts_ms == 3328
+    assert first_audio_chunk_after_tden.dts_ms == 3328
+    assert first_audio_chunk_after_tden.metadata.tden_tag == "2025-10-21T08:07:50"
+
+    assert first_video_chunk_after_tden.pts_ms == 3233
+    assert first_video_chunk_after_tden.dts_ms == 3233
+    assert first_video_chunk_after_tden.metadata.tden_tag == "2025-10-21T08:07:50"
   end
 
   test "(fMP4) stream with only video" do
@@ -223,7 +252,7 @@ defmodule ExHLS.Client.Test do
              12, 2, 13, 110, 0, 0, 9, 154, 0, 1, 224, 0, 30, 44, 91, 44, 0, 0, 0, 1, 104, 234,
              225, 178, 200, 176, 0, 0>> <> _rest = video_chunk.payload
 
-    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false}
+    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
   end
 
   defp assert_chunks_are_in_proper_order(chunks) do

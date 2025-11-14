@@ -3,12 +3,13 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @behaviour ExHLS.DemuxingEngine
 
   use Bunch.Access
+  use Bunch
 
   require Logger
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
-  @enforce_keys [:demuxer]
+  @enforce_keys [:demuxer, :last_tden_tag]
   defstruct @enforce_keys ++ [track_timestamps_data: %{}]
 
   # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
@@ -17,7 +18,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @timestamp_range_size_ns div(2 ** 33 * 1_000_000_000, 90_000)
 
   @type t :: %__MODULE__{
-          demuxer: Demuxer.t()
+          demuxer: Demuxer.t(),
+          last_tden_tag: String.t() | nil
         }
 
   @impl true
@@ -32,7 +34,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     # TODO - figure out how to do it properly
     demuxer = %{demuxer | waiting_random_access_indicator: false}
 
-    %__MODULE__{demuxer: demuxer}
+    %__MODULE__{demuxer: demuxer, last_tden_tag: nil}
   end
 
   @impl true
@@ -79,8 +81,11 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
     with {[packet], demuxer} <- Demuxer.take(demuxing_engine.demuxer, track_id) do
+      {maybe_tden_tag, demuxer} = maybe_read_tden_tag(demuxer, packet.pts)
+      tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
+
       {demuxing_engine, packet} =
-        %{demuxing_engine | demuxer: demuxer}
+        %{demuxing_engine | demuxer: demuxer, last_tden_tag: tden_tag}
         |> handle_possible_timestamps_rollover(track_id, packet)
 
       chunk = %ExHLS.Chunk{
@@ -90,7 +95,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         track_id: track_id,
         metadata: %{
           discontinuity: packet.discontinuity,
-          is_aligned: packet.is_aligned
+          is_aligned: packet.is_aligned,
+          tden_tag: tden_tag
         }
       }
 
@@ -98,6 +104,37 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     else
       {[], demuxer} ->
         {:error, :empty_track_data, %{demuxing_engine | demuxer: demuxer}}
+    end
+  end
+
+  defp maybe_read_tden_tag(demuxer, packet_pts) do
+    withl no_id3_stream:
+            {id3_track_id, _stream_description} <-
+              demuxer.pmt.streams
+              |> Enum.find(fn {_pid, stream_description} ->
+                stream_description.stream_type == :METADATA_IN_PES
+              end),
+          no_id3_data: {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
+          id3_not_in_timerange: true <- id3.pts <= packet_pts do
+      {parse_tden_tag(id3.data), demuxer}
+    else
+      no_id3_stream: nil -> {nil, demuxer}
+      no_id3_data: {[], updated_demuxer} -> {nil, updated_demuxer}
+      id3_not_in_timerange: false -> {nil, demuxer}
+    end
+  end
+
+  defp parse_tden_tag(payload) do
+    # UTF-8 encoding
+    encoding = 3
+
+    with {pos, _len} <- :binary.match(payload, "TDEN"),
+         <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
+         <<size::integer-size(4)-unit(8), _flags::16, ^encoding::8, text::binary-size(size - 2),
+           0::8, _rest::binary>> <- tden do
+      text
+    else
+      _error -> nil
     end
   end
 
