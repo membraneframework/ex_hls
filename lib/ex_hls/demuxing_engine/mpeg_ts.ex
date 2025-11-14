@@ -131,7 +131,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     with {pos, _len} <- :binary.match(payload, "TDEN"),
          <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
          <<size::integer-size(4)-unit(8), _flags::16, ^encoding::8, text::binary-size(size - 2),
-           0, _rest::binary>> <- tden do
+           0::8, _rest::binary>> <- tden do
       text
     else
       _error -> nil
