@@ -109,10 +109,6 @@ defmodule ExHLS.Client.Live.Reader do
     end
   end
 
-  defp should_start_playing?(%{ultra_low_latency?: true}) do
-    true
-  end
-
   defp should_start_playing?(state) do
     %ExM3U8.MediaPlaylist.Info{
       media_sequence: media_sequence,
