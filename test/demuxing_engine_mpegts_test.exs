@@ -24,7 +24,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS.Test do
       end)
 
     demuxing_engine = ExHLS.DemuxingEngine.MPEGTS.new(0)
-    demuxing_engine = %{demuxing_engine | packets: %{1 => packets, 2 => packets}}
+    demuxing_engine = %{demuxing_engine | packets_map: %{1 => packets, 2 => packets}}
 
     [1, 2]
     |> Enum.reduce(demuxing_engine, fn track_id, demuxing_engine ->

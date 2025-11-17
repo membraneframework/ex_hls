@@ -9,8 +9,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   alias Membrane.{AAC, H264, RemoteStream}
   alias MPEG.TS.Demuxer
 
-  @enforce_keys [:demuxer, :last_tden_tag, :packets]
-  defstruct @enforce_keys ++ [track_timestamps_data: %{}]
+  @enforce_keys [:demuxer]
+  defstruct @enforce_keys ++ [track_timestamps_data: %{}, last_tden_tag: nil, packets_map: %{}]
 
   # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
   # generates up to 1/10th of ms error per 26.5 hours of stream which is acceptable in
@@ -20,7 +20,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @type t :: %__MODULE__{
           demuxer: Demuxer.t(),
           last_tden_tag: String.t() | nil,
-          packets: %{non_neg_integer() => MPEG.TS.Demuxer.Container.t()}
+          packets_map: %{(track_id :: non_neg_integer()) => MPEG.TS.Demuxer.Container.t()}
         }
 
   @impl true
@@ -29,20 +29,19 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   # different demuxing engines
   def new(_timestamp_offset_ms) do
     demuxer = Demuxer.new()
-    %__MODULE__{demuxer: demuxer, last_tden_tag: nil, packets: %{}}
+    %__MODULE__{demuxer: demuxer}
   end
 
   @impl true
   def feed!(%__MODULE__{} = demuxing_engine, binary) do
     {new_packets, demuxer} = Demuxer.demux(demuxing_engine.demuxer, binary)
 
-    all_packets =
-      Enum.reduce(new_packets, demuxing_engine.packets, fn new_packet, all_packets ->
-        packets_for_pid = Map.get(all_packets, new_packet.pid, []) ++ [new_packet]
-        put_in(all_packets[new_packet.pid], packets_for_pid)
+    packets_map =
+      Enum.reduce(new_packets, demuxing_engine.packets_map, fn new_packet, packets_map ->
+        Map.update(packets_map, new_packet.pid, [new_packet], &(&1 ++ [new_packet]))
       end)
 
-    %{demuxing_engine | demuxer: demuxer, packets: all_packets}
+    %{demuxing_engine | demuxer: demuxer, packets_map: packets_map}
   end
 
   @impl true
@@ -81,9 +80,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp take_packets(demuxing_engine, track_id) do
-    case Map.get(demuxing_engine.packets, track_id) do
+    case Map.get(demuxing_engine.packets_map, track_id) do
       [packet | rest] ->
-        demuxing_engine = put_in(demuxing_engine.packets[track_id], rest)
+        demuxing_engine = put_in(demuxing_engine.packets_map[track_id], rest)
         {[packet], demuxing_engine}
 
       _other ->
