@@ -24,7 +24,8 @@ defmodule ExHLS.Client do
     :live_reader,
     :live_forwarder,
     :how_much_to_skip_ms,
-    :segment_format
+    :segment_format,
+    :live_edge_mode?
   ]
 
   defstruct @enforce_keys
@@ -57,6 +58,13 @@ defmodule ExHLS.Client do
   the client will treat HLS segments based on the extension in their name,
   falling back `MPEG-TS` if the cannot recognize the extension.
 
+  Passing `live_edge_mode?: true` option turns on live edge mode of the client (please do not
+  confuse it with the Low Latency HLS extension which is not supported by the client!).
+  In this mode the client starts playing the playlist as fast as possible, and skips to the most
+  recent segment.
+  Please note that this is not compliant with the HLS specification and might cause playback stalls.
+  The live edge mode is turned off by default.
+
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.
   To get the actual skipped duration, you can use `get_skipped_segments_cumulative_duration_ms/1`
@@ -71,10 +79,16 @@ defmodule ExHLS.Client do
     %{
       parent_process: parent_process,
       how_much_to_skip_ms: how_much_to_skip_ms,
-      segment_format: segment_format
+      segment_format: segment_format,
+      live_edge_mode?: live_edge_mode?
     } =
       opts
-      |> Keyword.validate!(parent_process: self(), how_much_to_skip_ms: 0, segment_format: nil)
+      |> Keyword.validate!(
+        parent_process: self(),
+        how_much_to_skip_ms: 0,
+        segment_format: nil,
+        live_edge_mode?: false
+      )
       |> Map.new()
 
     root_playlist_raw_content = Utils.download_or_read_file!(url)
@@ -100,7 +114,8 @@ defmodule ExHLS.Client do
       live_reader: nil,
       live_forwarder: nil,
       how_much_to_skip_ms: how_much_to_skip_ms,
-      segment_format: segment_format
+      segment_format: segment_format,
+      live_edge_mode?: live_edge_mode?
     }
     |> maybe_resolve_media_playlist()
   end
@@ -155,7 +170,8 @@ defmodule ExHLS.Client do
         ExHLS.Client.Live.Reader.start_link(
           client.media_playlist_url,
           forwarder,
-          client.segment_format
+          client.segment_format,
+          client.live_edge_mode?
         )
 
       %{client | live_reader: reader, live_forwarder: forwarder, hls_mode: :live}
