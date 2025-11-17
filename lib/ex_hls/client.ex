@@ -58,11 +58,12 @@ defmodule ExHLS.Client do
   the client will treat HLS segments based on the extension in their name,
   falling back `MPEG-TS` if the cannot recognize the extension.
 
-  Passing `live_edge_mode?: true` option turns on ultra low latency mode of the client.
+  Passing `live_edge_mode?: true` option turns on live edge mode of the client (please do not
+  confuse it with the Low Latency HLS extension which is not supported by the client!).
   In this mode the client starts playing the playlist as fast as possible, and skips to the most
-  recent segment
+  recent segment.
   Please note that this is not compliant with the HLS specification and might cause playback stalls.
-  The ultra low latency mode is turned off by default.
+  The live edge mode is turned off by default.
 
   Note that there is no guarantee that exactly the specified amount of time will be skipped.
   The actual skipped duration may be slightly shorter, depending on the HLS segments durations.

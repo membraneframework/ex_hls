@@ -109,10 +109,6 @@ defmodule ExHLS.Client.Live.Reader do
     end
   end
 
-  defp should_start_playing?(%{live_edge_mode?: true}) do
-    true
-  end
-
   defp should_start_playing?(state) do
     %ExM3U8.MediaPlaylist.Info{
       media_sequence: media_sequence,
@@ -120,7 +116,7 @@ defmodule ExHLS.Client.Live.Reader do
       end_list?: end_list?
     } = state.media_playlist.info
 
-    end_list? or
+    end_list? or state.live_edge_mode? or
       (is_number(media_sequence) and media_sequence >= 1) or
       segments_duration_sum(state) >= 2 * target_duration
   end
@@ -173,7 +169,7 @@ defmodule ExHLS.Client.Live.Reader do
     {media_inits, %{state | media_init_downloaded?: true}}
   end
 
-  # in the ultra low latency mode it skips to the most recent segment
+  # in the live edge mode it skips to the most recent segment
   defp next_segment_to_download_seq_num(
          %{max_downloaded_seq_num: nil, live_edge_mode?: true} = state
        ) do
