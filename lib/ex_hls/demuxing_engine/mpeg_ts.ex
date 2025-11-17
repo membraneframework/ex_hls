@@ -35,7 +35,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @impl true
   def feed!(%__MODULE__{} = demuxing_engine, binary) do
     {new_packets, demuxer} = Demuxer.demux(demuxing_engine.demuxer, binary)
-    Enum.each(new_packets, fn p -> nil end)
 
     all_packets =
       Enum.reduce(new_packets, demuxing_engine.packets, fn new_packet, all_packets ->
@@ -121,20 +120,21 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
-  defp maybe_read_tden_tag(demuxer, packet_pts) do
+  defp maybe_read_tden_tag(demuxing_engine, packet_pts) do
     withl no_id3_stream:
             {id3_track_id, _stream_description} <-
-              demuxer.pmt.streams
+              demuxing_engine.demuxer.streams
               |> Enum.find(fn {_pid, stream_description} ->
                 stream_description.stream_type == :METADATA_IN_PES
               end),
-          no_id3_data: {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
+          # Demuxer.take(demuxer, id3_track_id),
+          no_id3_data: {[id3], demuxing_engine} <- nil,
           id3_not_in_timerange: true <- id3.pts <= packet_pts do
-      {parse_tden_tag(id3.data), demuxer}
+      {parse_tden_tag(id3.data), demuxing_engine}
     else
-      no_id3_stream: nil -> {nil, demuxer}
-      no_id3_data: {[], updated_demuxer} -> {nil, updated_demuxer}
-      id3_not_in_timerange: false -> {nil, demuxer}
+      no_id3_stream: nil -> {nil, demuxing_engine}
+      no_id3_data: {[], updated_demuxing_engine} -> {nil, updated_demuxing_engine}
+      id3_not_in_timerange: false -> {nil, demuxing_engine}
     end
   end
 
