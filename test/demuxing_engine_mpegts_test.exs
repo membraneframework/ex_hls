@@ -1,7 +1,6 @@
 defmodule ExHLS.DemuxingEngine.MPEGTS.Test do
   use ExUnit.Case, async: false
 
-  @tag :sometag2
   test "handling timestamp rollovers" do
     timestamp_range = (2 ** 33 * 1_000_000_000) |> div(90_000)
     timestamp_granularity = div(timestamp_range, 33) - 5
