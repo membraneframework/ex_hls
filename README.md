@@ -15,7 +15,7 @@ The package can be installed by adding `ex_hls` to your list of dependencies in 
 ```elixir
 def deps do
   [
-    {:ex_hls, "~> 0.1.6"}
+    {:ex_hls, "~> 0.1.5"}
   ]
 end
 ```
@@ -55,7 +55,7 @@ Now you can get the Elixir stream containing media chunks:
 ```elixir
 stream = ExHLS.Client.generate_stream(client)
 Enum.take(stream, 5)
-# Returns:
+# Returns: 
 # [
 #   %ExHLS.Chunk{
 #     payload: <<220, 0, 76, 97, 118, 99, 54, 49, 46, 51, 46, 49, 48, 48, 0, 66,
