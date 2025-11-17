@@ -3,6 +3,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @behaviour ExHLS.DemuxingEngine
 
   use Bunch.Access
+  use Bunch
 
   require Logger
   alias Membrane.{AAC, H264, RemoteStream}
@@ -120,27 +121,31 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
-  defp maybe_read_tden_tag(demuxing_engine, packet_pts) do
-    with {id3_track_id, _stream_description} <-
-           demuxing_engine.demuxer.streams
-           |> Enum.find(fn {_pid, stream_description} ->
-             stream_description.stream_type == :METADATA_IN_PES
-           end),
-         {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
-         true <- id3.payload.pts <= packet_pts do
-      {parse_tden_tag(id3.data), demuxing_engine}
+  defp maybe_read_tden_tag(demuxer, packet_pts) do
+    withl no_id3_stream:
+            {id3_track_id, _stream_description} <-
+              demuxer.pmt.streams
+              |> Enum.find(fn {_pid, stream_description} ->
+                stream_description.stream_type == :METADATA_IN_PES
+              end),
+          no_id3_data: {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
+          id3_not_in_timerange: true <- id3.pts <= packet_pts do
+      {parse_tden_tag(id3.data), demuxer}
     else
-      nil -> {nil, demuxing_engine}
-      {[], updated_demuxing_engine} -> {nil, updated_demuxing_engine}
-      false -> {nil, demuxing_engine}
+      no_id3_stream: nil -> {nil, demuxer}
+      no_id3_data: {[], updated_demuxer} -> {nil, updated_demuxer}
+      id3_not_in_timerange: false -> {nil, demuxer}
     end
   end
 
   defp parse_tden_tag(payload) do
-    with {pos, len} <- :binary.match(payload, "TDEN"),
-         trailing_bytes <- :binary.part(payload, pos + len, byte_size(payload) - (pos + len)),
-         <<size::integer-size(4)-unit(8), _flags::16, rest::binary>> <- trailing_bytes,
-         <<_3, text::binary-size(size - 2), 0, _rest::binary>> <- rest do
+    # UTF-8 encoding
+    encoding = 3
+
+    with {pos, _len} <- :binary.match(payload, "TDEN"),
+         <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
+         <<size::integer-size(4)-unit(8), _flags::16, ^encoding::8, text::binary-size(size - 2),
+           0::8, _rest::binary>> <- tden do
       text
     else
       _error -> nil

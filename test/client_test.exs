@@ -133,7 +133,6 @@ defmodule ExHLS.Client.Test do
     assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
   end
 
-  @tag :sometag
   test "(MPEGTS) stream with ID3v2.4 TDEN tag" do
     client = Client.new(@mpegts_with_tden_url)
 
@@ -144,17 +143,13 @@ defmodule ExHLS.Client.Test do
     first_audio_chunk_after_tden =
       Enum.find(
         chunks,
-        &(&1.metadata.tden_tag != nil and
-            &1.media_type ==
-              :audio)
+        &(&1.metadata.tden_tag != nil and &1.media_type == :audio)
       )
 
     first_video_chunk_after_tden =
       Enum.find(
         chunks,
-        &(&1.metadata.tden_tag != nil and
-            &1.media_type ==
-              :video)
+        &(&1.metadata.tden_tag != nil and &1.media_type == :video)
       )
 
     assert first_audio_chunk_after_tden.pts_ms == 3328
@@ -238,8 +233,8 @@ defmodule ExHLS.Client.Test do
              215, 198, 77, 184, 229, 170, 157, 115, 169, 223>> <> _rest = audio_chunk.payload
   end
 
-  test "(MPEGTS) stream with ultra low latency mode" do
-    client = Client.new(@mpegts_live_url, ultra_low_latency?: true)
+  test "(MPEGTS) stream with live edge mode" do
+    client = Client.new(@mpegts_live_url, live_edge_mode?: true)
 
     assert Client.get_variants(client) == %{}
     assert {:ok, tracks_info, client} = Client.get_tracks_info(client)
