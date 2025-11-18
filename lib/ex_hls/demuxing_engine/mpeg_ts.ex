@@ -126,10 +126,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               |> Enum.find(fn {_pid, stream_description} ->
                 stream_description.stream_type == :METADATA_IN_PES
               end),
-          # Demuxer.take(demuxer, id3_track_id),
-          no_id3_data: {[id3], demuxing_engine} <- nil,
-          id3_not_in_timerange: true <- id3.pts <= packet_pts do
-      {parse_tden_tag(id3.data), demuxing_engine}
+          no_id3_data: {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
+          id3_not_in_timerange: true <- id3.payload.pts <= packet_pts do
+      {parse_tden_tag(id3.payload.data), demuxing_engine}
     else
       no_id3_stream: nil -> {nil, demuxing_engine}
       no_id3_data: {[], updated_demuxing_engine} -> {nil, updated_demuxing_engine}
