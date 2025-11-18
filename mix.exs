@@ -43,9 +43,7 @@ defmodule ExHLS.Mixfile do
       {:bunch, "~> 1.6"},
       {:membrane_mp4_plugin, "~> 0.36.0"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
-      {:mpeg_ts,
-       github: "membraneframework-labs/kim_mpeg_ts",
-       branch: "varsill/add_stream_aggregator_for_metadata_in_pes"},
+      {:mpeg_ts, "~> 3.3.5"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
