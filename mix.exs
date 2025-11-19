@@ -1,7 +1,7 @@
 defmodule ExHLS.Mixfile do
   use Mix.Project
 
-  @version "0.1.5"
+  @version "0.2.0"
   @github_url "https://github.com/membraneframework/ex_hls"
 
   def project do
@@ -43,13 +43,10 @@ defmodule ExHLS.Mixfile do
       {:bunch, "~> 1.6"},
       {:membrane_mp4_plugin, "~> 0.36.0"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
-      {:mpeg_ts,
-       github: "membraneframework-labs/kim_mpeg_ts",
-       branch: "varsill/fix_pes_optional_header_resolving"},
+      {:mpeg_ts, "~> 3.3.5"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false},
-      {:mock, "~> 0.3.0", only: :test}
+      {:credo, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 
