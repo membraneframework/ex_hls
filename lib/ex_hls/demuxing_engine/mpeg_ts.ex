@@ -148,37 +148,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
-  defp maybe_read_tden_tag(demuxer, packet_pts) do
-    withl no_id3_stream:
-            {id3_track_id, _stream_description} <-
-              demuxer.pmt.streams
-              |> Enum.find(fn {_pid, stream_description} ->
-                stream_description.stream_type == :METADATA_IN_PES
-              end),
-          no_id3_data: {[id3], demuxer} <- Demuxer.take(demuxer, id3_track_id),
-          id3_not_in_timerange: true <- id3.pts <= packet_pts do
-      {parse_tden_tag(id3.data), demuxer}
-    else
-      no_id3_stream: nil -> {nil, demuxer}
-      no_id3_data: {[], updated_demuxer} -> {nil, updated_demuxer}
-      id3_not_in_timerange: false -> {nil, demuxer}
-    end
-  end
-
-  defp parse_tden_tag(payload) do
-    # UTF-8 encoding
-    encoding = 3
-
-    with {pos, _len} <- :binary.match(payload, "TDEN"),
-         <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
-         <<size::integer-size(4)-unit(8), _flags::16, ^encoding::8, text::binary-size(size - 2),
-           0::8, _rest::binary>> <- tden do
-      text
-    else
-      _error -> nil
-    end
-  end
-
   # value returned by Demuxer is represented in nanoseconds
   defp packet_ts_to_millis(ts), do: div(ts, 1_000_000)
 
