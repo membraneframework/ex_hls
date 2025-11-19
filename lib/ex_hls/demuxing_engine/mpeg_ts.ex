@@ -79,17 +79,6 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     end
   end
 
-  defp take_packets(demuxing_engine, track_id) do
-    case Map.get(demuxing_engine.packets_map, track_id) do
-      [packet | rest] ->
-        demuxing_engine = put_in(demuxing_engine.packets_map[track_id], rest)
-        {[packet], demuxing_engine}
-
-      _other ->
-        {[], demuxing_engine}
-    end
-  end
-
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
     with {[packet], demuxing_engine} <- take_packets(demuxing_engine, track_id) do
@@ -116,6 +105,17 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
     else
       {[], demuxing_engine} ->
         {:error, :empty_track_data, demuxing_engine}
+    end
+  end
+
+  defp take_packets(demuxing_engine, track_id) do
+    case Map.get(demuxing_engine.packets_map, track_id) do
+      [packet | rest] ->
+        demuxing_engine = put_in(demuxing_engine.packets_map[track_id], rest)
+        {[packet], demuxing_engine}
+
+      _other ->
+        {[], demuxing_engine}
     end
   end
 
