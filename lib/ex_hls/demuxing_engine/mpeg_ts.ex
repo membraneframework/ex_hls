@@ -20,7 +20,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @type t :: %__MODULE__{
           demuxer: Demuxer.t(),
           last_tden_tag: String.t() | nil,
-          packets_map: %{(track_id :: non_neg_integer()) => MPEG.TS.Demuxer.Container.t()}
+          packets_map: %{(track_id :: non_neg_integer()) => Qex.t(MPEG.TS.Demuxer.Container.t())}
         }
 
   @impl true
