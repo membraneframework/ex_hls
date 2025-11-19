@@ -38,7 +38,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
     packets_map =
       Enum.reduce(new_packets, demuxing_engine.packets_map, fn new_packet, packets_map ->
-        Map.update(packets_map, new_packet.pid, [new_packet], &(&1 ++ [new_packet]))
+        Map.update(packets_map, new_packet.pid, Qex.new([new_packet]), &Qex.push(&1, new_packet))
       end)
 
     %{demuxing_engine | demuxer: demuxer, packets_map: packets_map}
@@ -82,12 +82,10 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
     with {[packet], demuxing_engine} <- take_packets(demuxing_engine, track_id) do
-      {maybe_tden_tag, demuxing_engine} = maybe_read_tden_tag(demuxing_engine, packet.payload.pts)
-      tden_tag = maybe_tden_tag || demuxing_engine.last_tden_tag
+      demuxing_engine = maybe_read_tden_tag(demuxing_engine, packet.payload.pts)
 
       {demuxing_engine, packet} =
-        %{demuxing_engine | last_tden_tag: tden_tag}
-        |> handle_possible_timestamps_rollover(track_id, packet)
+        demuxing_engine |> handle_possible_timestamps_rollover(track_id, packet)
 
       chunk = %ExHLS.Chunk{
         payload: packet.payload.data,
@@ -97,7 +95,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         metadata: %{
           discontinuity: packet.payload.discontinuity,
           is_aligned: packet.payload.is_aligned,
-          tden_tag: tden_tag
+          tden_tag: demuxing_engine.last_tden_tag
         }
       }
 
@@ -109,13 +107,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   defp take_packets(demuxing_engine, track_id) do
-    case Map.get(demuxing_engine.packets_map, track_id) do
-      [packet | rest] ->
-        demuxing_engine = put_in(demuxing_engine.packets_map[track_id], rest)
-        {[packet], demuxing_engine}
-
-      _other ->
-        {[], demuxing_engine}
+    with {:ok, packets} <- Map.fetch(demuxing_engine.packets_map, track_id),
+         {{:value, packet}, rest} <- Qex.pop(packets) do
+      demuxing_engine = put_in(demuxing_engine.packets_map[track_id], rest)
+      {[packet], demuxing_engine}
+    else
+      _other -> {[], demuxing_engine}
     end
   end
 
@@ -128,11 +125,12 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               end),
           no_id3_data: {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
           id3_not_in_timerange: true <- id3.payload.pts <= packet_pts do
-      {parse_tden_tag(id3.payload.data), demuxing_engine}
+      tden_tag = parse_tden_tag(id3.payload.data) || demuxing_engine.last_tden_tag
+      %{demuxing_engine | last_tden_tag: tden_tag}
     else
-      no_id3_stream: nil -> {nil, demuxing_engine}
-      no_id3_data: {[], updated_demuxing_engine} -> {nil, updated_demuxing_engine}
-      id3_not_in_timerange: false -> {nil, demuxing_engine}
+      no_id3_stream: nil -> demuxing_engine
+      no_id3_data: {[], updated_demuxing_engine} -> updated_demuxing_engine
+      id3_not_in_timerange: false -> demuxing_engine
     end
   end
 
