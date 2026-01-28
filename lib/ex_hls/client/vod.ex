@@ -253,10 +253,13 @@ defmodule ExHLS.Client.VOD do
       [%{uri: segment_uri} | rest] ->
         client = ensure_demuxing_engine_resolved(client, segment_uri)
 
-        segment_content =
-          client.media_base_url
-          |> Path.join(segment_uri)
-          |> Utils.download_or_read_file!()
+        full_segment_uri =
+          case URI.parse(segment_uri) do
+            %URI{host: nil} -> client.media_base_url |> Path.join(segment_uri)
+            _ -> segment_uri
+          end
+
+        segment_content = Utils.download_or_read_file!(full_segment_uri)
 
         demuxing_engine =
           client.demuxing_engine
