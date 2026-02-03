@@ -305,9 +305,9 @@ defmodule ExHLS.Client.Live.Reader do
   defp read_and_send_track_chunk(track_id, state) do
     case state.demuxing_engine
          |> state.demuxing_engine_impl.pop_chunk(track_id) do
-      {:ok, chunk, demuxing_engine} ->
+      {:ok, %ExHLS.Chunk{} = chunk, demuxing_engine} ->
         media_type = state.tracks_data[track_id].media_type
-        chunk = %ExHLS.Chunk{chunk | media_type: media_type}
+        chunk = %{chunk | media_type: media_type}
         Forwarder.feed_with_media_chunk(state.forwarder, media_type, chunk)
 
         ts = if chunk.dts_ms != nil, do: chunk.dts_ms, else: chunk.pts_ms
