@@ -138,8 +138,9 @@ defmodule ExHLS.Client.VOD do
   defp do_read_chunk(client, media_type) do
     with impl when impl != nil <- client.demuxing_engine_impl,
          {:ok, track_id} <- get_track_id(client, media_type),
-         {:ok, chunk, demuxing_engine} <- client.demuxing_engine |> impl.pop_chunk(track_id) do
-      chunk = %ExHLS.Chunk{chunk | media_type: media_type}
+         {:ok, %ExHLS.Chunk{} = chunk, demuxing_engine} <-
+           client.demuxing_engine |> impl.pop_chunk(track_id) do
+      chunk = %{chunk | media_type: media_type}
       client = client |> put_in([:demuxing_engine], demuxing_engine)
       {chunk, client}
     else
@@ -163,7 +164,9 @@ defmodule ExHLS.Client.VOD do
             # after calling `end_stream/1` there is a chance that `pop_chunk/2` will flush
             # some remaining data
             %{client | end_stream_executed?: true}
-            |> Map.update!(:demuxing_engine, &client.demuxing_engine_impl.end_stream/1)
+            |> Map.update!(:demuxing_engine, fn engine ->
+              engine |> client.demuxing_engine_impl.end_stream()
+            end)
             |> do_read_chunk(media_type)
 
           {:error, :no_more_segments, client} when client.end_stream_executed? ->
@@ -256,7 +259,7 @@ defmodule ExHLS.Client.VOD do
         full_segment_uri =
           case URI.parse(segment_uri) do
             %URI{host: nil} -> client.media_base_url |> Path.join(segment_uri)
-            _ -> segment_uri
+            _uri -> segment_uri
           end
 
         segment_content = Utils.download_or_read_file!(full_segment_uri)
