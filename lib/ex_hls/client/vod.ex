@@ -259,7 +259,7 @@ defmodule ExHLS.Client.VOD do
         full_segment_uri =
           case URI.parse(segment_uri) do
             %URI{host: nil} -> client.media_base_url |> Path.join(segment_uri)
-            _ -> segment_uri
+            _uri -> segment_uri
           end
 
         segment_content = Utils.download_or_read_file!(full_segment_uri)
