@@ -310,7 +310,7 @@ defmodule ExHLS.Client.Live.Reader do
         chunk = %{chunk | media_type: media_type}
         Forwarder.feed_with_media_chunk(state.forwarder, media_type, chunk)
 
-        ts = if chunk.dts_ms != nil, do: chunk.dts_ms, else: chunk.pts_ms
+        ts = chunk.dts_ms || chunk.pts_ms
 
         %{
           state
