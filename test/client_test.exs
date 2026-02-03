@@ -44,8 +44,8 @@ defmodule ExHLS.Client.Test do
       assert byte_size(video_chunk.payload) == 1048
 
       assert <<0, 0, 0, 1, 9, 240, 0, 0, 0, 1, 103, 100, 0, 31, 172, 217, 128, 80, 5, 187, 1, 16,
-               0, 0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0,
-               1>> <> _rest = video_chunk.payload
+               0, 0, 3, 0, 16, 0, 0, 7, 128, 241, 131, 25, 160, 0, 0, 0, 1>> <> _rest =
+               video_chunk.payload
 
       [audio_chunk | _rest_audio_chunks] = audio_chunks
       assert %{pts_ms: 10_010, dts_ms: 10_010} = audio_chunk
