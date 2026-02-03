@@ -310,7 +310,7 @@ defmodule ExHLS.Client.Live.Reader do
         chunk = %{chunk | media_type: media_type}
         Forwarder.feed_with_media_chunk(state.forwarder, media_type, chunk)
 
-        ts = chunk.dts_ms || chunk.pts_ms
+        ts = chunk_dts_or_pts_ms(chunk)
 
         %{
           state
@@ -425,4 +425,10 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp maybe_resolve_demuxing_engine(_segment_uri, state), do: state
+
+  # workaround to mute dialyzer
+  @spec chunk_dts_or_pts_ms(ExHLS.Chunk.t()) :: non_neg_integer() | nil
+  def chunk_dts_or_pts_ms(chunk) do
+    chunk.dts_ms || chunk.pts_ms
+  end
 end
