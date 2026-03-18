@@ -73,7 +73,8 @@ defmodule ExHLS.Client do
   @spec new(String.t(),
           parent_process: pid(),
           how_much_to_skip_ms: non_neg_integer(),
-          segment_format: :ts | :cmaf
+          segment_format: :ts | :cmaf,
+          live_edge_mode?: boolean()
         ) :: client()
   def new(url, opts \\ []) do
     %{
