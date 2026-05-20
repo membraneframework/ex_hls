@@ -125,26 +125,14 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               end),
           no_id3_data: {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
           id3_not_in_timerange: true <- id3.payload.pts <= packet_pts do
-      tden_tag = parse_tden_tag(id3.payload.data) || demuxing_engine.last_tden_tag
+      tden_tag =
+        ExHLS.DemuxingEngine.ID3.parse_tden_tag(id3.payload.data) || demuxing_engine.last_tden_tag
+
       %{demuxing_engine | last_tden_tag: tden_tag}
     else
       no_id3_stream: nil -> demuxing_engine
       no_id3_data: {[], updated_demuxing_engine} -> updated_demuxing_engine
       id3_not_in_timerange: false -> demuxing_engine
-    end
-  end
-
-  defp parse_tden_tag(payload) do
-    # UTF-8 encoding
-    encoding = 3
-
-    with {pos, _len} <- :binary.match(payload, "TDEN"),
-         <<_skip::binary-size(pos), "TDEN", tden::binary>> <- payload,
-         <<size::integer-size(4)-unit(8), _flags::16, ^encoding::8, text::binary-size(size - 2),
-           0::8, _rest::binary>> <- tden do
-      text
-    else
-      _error -> nil
     end
   end
 
