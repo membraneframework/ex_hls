@@ -308,6 +308,7 @@ defmodule ExHLS.Client.Live.Reader do
       {:ok, %ExHLS.Chunk{} = chunk, demuxing_engine} ->
         media_type = state.tracks_data[track_id].media_type
         chunk = %{chunk | media_type: media_type}
+        chunk = maybe_adjust_tden_for_mpeg_ts(chunk, state)
         Forwarder.feed_with_media_chunk(state.forwarder, media_type, chunk)
 
         ts = chunk_dts_or_pts_ms(chunk)
@@ -425,6 +426,19 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp maybe_resolve_demuxing_engine(_segment_uri, state), do: state
+
+  defp maybe_adjust_tden_for_mpeg_ts(chunk, %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state) do
+    with tden_tag when is_binary(tden_tag) <- chunk.metadata[:tden_tag],
+         target_duration when is_number(target_duration) <- state.media_playlist.info.target_duration,
+         {:ok, datetime, _offset} <- DateTime.from_iso8601(tden_tag) do
+      adjusted = DateTime.add(datetime, trunc(target_duration * 1000), :millisecond)
+      %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, DateTime.to_iso8601(adjusted))}
+    else
+      _ -> chunk
+    end
+  end
+
+  defp maybe_adjust_tden_for_mpeg_ts(chunk, _state), do: chunk
 
   # workaround to mute dialyzer
   @spec chunk_dts_or_pts_ms(ExHLS.Chunk.t()) :: non_neg_integer() | nil
