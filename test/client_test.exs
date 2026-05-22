@@ -4,6 +4,8 @@ defmodule ExHLS.Client.Test do
   alias ExHLS.Client
   alias Membrane.{AAC, H264, RemoteStream}
 
+  # WARNING - these fixtures are also used by `membrane_http_adaptive_streaming` tests.
+  # Keep in mind that modifying these fixtures can affect tests in places that are not limited to this plugin
   @fixtures "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/"
   @fmp4_url @fixtures <> "fmp4/output.m3u8"
   @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
