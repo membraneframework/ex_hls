@@ -1,7 +1,7 @@
 defmodule ExHLS.Mixfile do
   use Mix.Project
 
-  @version "0.2.2"
+  @version "0.2.3"
   @github_url "https://github.com/membraneframework/ex_hls"
 
   def project do
@@ -41,9 +41,7 @@ defmodule ExHLS.Mixfile do
       {:req, "~> 0.5.10"},
       {:qex, "~> 0.5.1"},
       {:bunch, "~> 1.6"},
-      # {:membrane_mp4_plugin, "~> 0.36.0"},
-      {:membrane_mp4_plugin,
-       github: "membraneframework/membrane_mp4_plugin", branch: "handle_emsg_box"},
+      {:membrane_mp4_plugin, "~> 0.36.4"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
       {:mpeg_ts, "~> 3.3.5"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
