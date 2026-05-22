@@ -7,6 +7,7 @@ defmodule ExHLS.Client.Test do
   @fixtures "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/"
   @fmp4_url @fixtures <> "fmp4/output.m3u8"
   @fmp4_only_video_url @fixtures <> "fmp4_only_video/output.m3u8"
+  @fmp4_with_tden_url "test/fixtures/fmp4_with_tden/output_playlist.m3u8"
   @mpegts_only_video_url @fixtures <> "mpeg_ts_only_video/output_playlist.m3u8"
   @mpegts_with_tden_url "test/fixtures/mpeg_ts_with_tden/output_playlist.m3u8"
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
@@ -159,6 +160,34 @@ defmodule ExHLS.Client.Test do
     assert first_video_chunk_after_tden.pts_ms == 3233
     assert first_video_chunk_after_tden.dts_ms == 3233
     assert first_video_chunk_after_tden.metadata.tden_tag == "2025-10-21T08:07:50"
+  end
+
+  test "(fMP4) stream with ID3v2.4 TDEN tag" do
+    client = Client.new(@fmp4_with_tden_url)
+
+    assert Client.get_variants(client) == %{}
+
+    chunks = Client.generate_stream(client) |> Enum.take(381)
+
+    first_audio_chunk_after_tden =
+      Enum.find(
+        chunks,
+        &(&1.metadata.tden_tag != nil and &1.media_type == :audio)
+      )
+
+    first_video_chunk_after_tden =
+      Enum.find(
+        chunks,
+        &(&1.metadata.tden_tag != nil and &1.media_type == :video)
+      )
+
+    assert first_audio_chunk_after_tden.pts_ms == 210_058
+    assert first_audio_chunk_after_tden.dts_ms == 210_058
+    assert first_audio_chunk_after_tden.metadata.tden_tag == "2026-05-20T14:33:58"
+
+    assert first_video_chunk_after_tden.pts_ms == 210_044
+    assert first_video_chunk_after_tden.dts_ms == 210_044
+    assert first_video_chunk_after_tden.metadata.tden_tag == "2026-05-20T14:33:58"
   end
 
   test "(fMP4) stream with only video" do
