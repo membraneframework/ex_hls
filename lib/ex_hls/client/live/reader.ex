@@ -429,7 +429,13 @@ defmodule ExHLS.Client.Live.Reader do
 
   defp maybe_resolve_demuxing_engine(_segment_uri, state), do: state
 
-  defp maybe_adjust_tden_for_mpeg_ts(chunk, %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state) do
+  # In MPEG-TS, the TDEN ID3 tag is placed at the start of the segment, so its timestamp reflects
+  # the segment's begin time. Offset it forward by the segment duration to get the end time,
+  # matching the semantics of TDEN in CMAF (where the tag is placed at the end of the segment).
+  defp maybe_adjust_tden_for_mpeg_ts(
+         chunk,
+         %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state
+       ) do
     with tden_tag when is_binary(tden_tag) <- chunk.metadata[:tden_tag],
          duration when is_number(duration) <- state.current_segment_duration,
          {:ok, datetime, _offset} <- DateTime.from_iso8601(tden_tag) do
