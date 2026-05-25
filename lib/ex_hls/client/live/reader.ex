@@ -445,7 +445,7 @@ defmodule ExHLS.Client.Live.Reader do
     with tden_tag when tden_tag != nil <- chunk.metadata[:tden_tag],
          duration when duration != nil <- state.current_segment_duration,
          {:ok, datetime} <- NaiveDateTime.from_iso8601(tden_tag) do
-      adjusted = NaiveDateTime.add(datetime, trunc(duration * 1000), :millisecond)
+      adjusted = NaiveDateTime.add(datetime, round(duration * 1000), :millisecond)
       %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, NaiveDateTime.to_iso8601(adjusted))}
     else
       _other ->
