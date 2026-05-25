@@ -442,7 +442,7 @@ defmodule ExHLS.Client.Live.Reader do
       adjusted = DateTime.add(datetime, trunc(duration * 1000), :millisecond)
       %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, DateTime.to_iso8601(adjusted))}
     else
-      _ -> chunk
+      _other -> chunk
     end
   end
 
