@@ -441,8 +441,8 @@ defmodule ExHLS.Client.Live.Reader do
          chunk,
          %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state
        ) do
-    with tden_tag when is_binary(tden_tag) <- chunk.metadata[:tden_tag],
-         duration when is_number(duration) <- state.current_segment_duration,
+    with tden_tag when tden_tag != nil <- chunk.metadata[:tden_tag],
+         duration when duration != nil <- state.current_segment_duration,
          {:ok, datetime} <- NaiveDateTime.from_iso8601(tden_tag) do
       adjusted = NaiveDateTime.add(datetime, trunc(duration * 1000), :millisecond)
       %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, NaiveDateTime.to_iso8601(adjusted))}
