@@ -443,11 +443,12 @@ defmodule ExHLS.Client.Live.Reader do
        ) do
     with tden_tag when is_binary(tden_tag) <- chunk.metadata[:tden_tag],
          duration when is_number(duration) <- state.current_segment_duration,
-         {:ok, datetime, _offset} <- DateTime.from_iso8601(tden_tag) do
-      adjusted = DateTime.add(datetime, trunc(duration * 1000), :millisecond)
-      %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, DateTime.to_iso8601(adjusted))}
+         {:ok, datetime} <- NaiveDateTime.from_iso8601(tden_tag) do
+      adjusted = NaiveDateTime.add(datetime, trunc(duration * 1000), :millisecond)
+      %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, NaiveDateTime.to_iso8601(adjusted))}
     else
-      _other -> chunk
+      _other ->
+        chunk
     end
   end
 
