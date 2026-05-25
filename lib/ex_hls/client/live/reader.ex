@@ -43,7 +43,8 @@ defmodule ExHLS.Client.Live.Reader do
       timestamp_offset: nil,
       playing_started?: false,
       segment_format: segment_format,
-      live_edge_mode?: live_edge_mode?
+      live_edge_mode?: live_edge_mode?,
+      current_segment_duration: nil
     }
 
     {:ok, state, {:continue, :setup}}
@@ -244,6 +245,13 @@ defmodule ExHLS.Client.Live.Reader do
 
     segment_content = Utils.download_or_read_file!(uri)
     state = maybe_resolve_demuxing_engine(segment.uri, state)
+
+    state =
+      case segment do
+        %Segment{duration: duration} -> %{state | current_segment_duration: duration}
+        _other -> state
+      end
+
     consume_segment_content(segment_content, state)
   end
 
@@ -308,6 +316,7 @@ defmodule ExHLS.Client.Live.Reader do
       {:ok, %ExHLS.Chunk{} = chunk, demuxing_engine} ->
         media_type = state.tracks_data[track_id].media_type
         chunk = %{chunk | media_type: media_type}
+        chunk = maybe_adjust_tden_for_mpeg_ts(chunk, state)
         Forwarder.feed_with_media_chunk(state.forwarder, media_type, chunk)
 
         ts = chunk_dts_or_pts_ms(chunk)
@@ -425,6 +434,26 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp maybe_resolve_demuxing_engine(_segment_uri, state), do: state
+
+  # In MPEG-TS, the TDEN ID3 tag is placed at the start of the segment, so its timestamp reflects
+  # the segment's begin time. Offset it forward by the segment duration to get the end time,
+  # matching the semantics of TDEN in CMAF (where the tag is placed at the end of the segment).
+  defp maybe_adjust_tden_for_mpeg_ts(
+         chunk,
+         %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state
+       ) do
+    with tden_tag when tden_tag != nil <- chunk.metadata[:tden_tag],
+         duration when duration != nil <- state.current_segment_duration,
+         {:ok, datetime} <- NaiveDateTime.from_iso8601(tden_tag) do
+      adjusted = NaiveDateTime.add(datetime, round(duration * 1000), :millisecond)
+      %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, NaiveDateTime.to_iso8601(adjusted))}
+    else
+      _other ->
+        chunk
+    end
+  end
+
+  defp maybe_adjust_tden_for_mpeg_ts(chunk, _state), do: chunk
 
   # workaround to mute dialyzer
   @spec chunk_dts_or_pts_ms(ExHLS.Chunk.t()) :: non_neg_integer() | nil
