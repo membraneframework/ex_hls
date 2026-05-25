@@ -1,7 +1,7 @@
 defmodule ExHLS.Mixfile do
   use Mix.Project
 
-  @version "0.2.3"
+  @version "0.2.4"
   @github_url "https://github.com/membraneframework/ex_hls"
 
   def project do
