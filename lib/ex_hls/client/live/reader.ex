@@ -43,7 +43,8 @@ defmodule ExHLS.Client.Live.Reader do
       timestamp_offset: nil,
       playing_started?: false,
       segment_format: segment_format,
-      live_edge_mode?: live_edge_mode?
+      live_edge_mode?: live_edge_mode?,
+      current_segment_duration: nil
     }
 
     {:ok, state, {:continue, :setup}}
@@ -244,6 +245,7 @@ defmodule ExHLS.Client.Live.Reader do
 
     segment_content = Utils.download_or_read_file!(uri)
     state = maybe_resolve_demuxing_engine(segment.uri, state)
+    state = %{state | current_segment_duration: segment.duration}
     consume_segment_content(segment_content, state)
   end
 
@@ -429,9 +431,9 @@ defmodule ExHLS.Client.Live.Reader do
 
   defp maybe_adjust_tden_for_mpeg_ts(chunk, %{demuxing_engine_impl: ExHLS.DemuxingEngine.MPEGTS} = state) do
     with tden_tag when is_binary(tden_tag) <- chunk.metadata[:tden_tag],
-         target_duration when is_number(target_duration) <- state.media_playlist.info.target_duration,
+         duration when is_number(duration) <- state.current_segment_duration,
          {:ok, datetime, _offset} <- DateTime.from_iso8601(tden_tag) do
-      adjusted = DateTime.add(datetime, trunc(target_duration * 1000), :millisecond)
+      adjusted = DateTime.add(datetime, trunc(duration * 1000), :millisecond)
       %{chunk | metadata: Map.put(chunk.metadata, :tden_tag, DateTime.to_iso8601(adjusted))}
     else
       _ -> chunk
