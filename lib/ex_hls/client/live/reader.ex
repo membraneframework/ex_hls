@@ -247,9 +247,10 @@ defmodule ExHLS.Client.Live.Reader do
     state = maybe_resolve_demuxing_engine(segment.uri, state)
 
     state =
-      if is_struct(segment, Segment),
-        do: %{state | current_segment_duration: segment.duration},
-        else: state
+      case segment do
+        %Segment{duration: duration} -> %{state | current_segment_duration: duration}
+        _other -> state
+      end
 
     consume_segment_content(segment_content, state)
   end
