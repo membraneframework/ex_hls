@@ -245,7 +245,12 @@ defmodule ExHLS.Client.Live.Reader do
 
     segment_content = Utils.download_or_read_file!(uri)
     state = maybe_resolve_demuxing_engine(segment.uri, state)
-    state = %{state | current_segment_duration: segment.duration}
+
+    state =
+      if is_struct(segment, Segment),
+        do: %{state | current_segment_duration: segment.duration},
+        else: state
+
     consume_segment_content(segment_content, state)
   end
 
