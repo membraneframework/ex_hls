@@ -45,7 +45,7 @@ defmodule ExHLS.Mixfile do
       {:membrane_mp4_plugin, "~> 0.36.4"},
       {:membrane_h26x_plugin, "~> 0.10.2"},
       {:mpeg_ts, "~> 3.3.5"},
-      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:ex_doc, ">= 0.40.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
     ]
