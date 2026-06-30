@@ -94,7 +94,10 @@ defmodule ExHLS.Client.Test do
 
       [video_chunk | _rest_video_chunks] = video_chunks
 
-      assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+      # The first video AU is a B-frame-reordered frame: its presentation
+      # timestamp (pts) is offset by one reorder step (80 ms) ahead of its
+      # decode timestamp (dts), which stays at 0.
+      assert %{pts_ms: 80, dts_ms: 0} = video_chunk
       assert byte_size(video_chunk.payload) == 775
 
       assert <<0, 0, 2, 171, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217, 72, 183, 150, 44,
@@ -211,7 +214,10 @@ defmodule ExHLS.Client.Test do
     chunks = Client.generate_stream(client) |> Enum.take(10)
     [video_chunk | _rest_video_chunks] = chunks
 
-    assert %{pts_ms: 0, dts_ms: 0} = video_chunk
+    # The first video AU is a B-frame-reordered frame: its presentation
+    # timestamp (pts) is offset by one reorder step (80 ms) ahead of its
+    # decode timestamp (dts), which stays at 0.
+    assert %{pts_ms: 80, dts_ms: 0} = video_chunk
     assert byte_size(video_chunk.payload) == 823
 
     assert <<0, 0, 0, 2, 9, 240, 0, 0, 2, 171, 6, 5, 255, 255, 167, 220, 69, 233, 189, 230, 217,
