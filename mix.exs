@@ -39,7 +39,7 @@ defmodule ExHLS.Mixfile do
   defp deps do
     [
       {:ex_m3u8, "~> 0.15.4"},
-      {:req, "~> 0.5.10"},
+      {:req, "~> 0.6.1"},
       {:qex, "~> 0.5.1"},
       {:bunch, "~> 1.6"},
       {:membrane_mp4_plugin, "~> 0.36.4"},
