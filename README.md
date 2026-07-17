@@ -15,7 +15,7 @@ The package can be installed by adding `ex_hls` to your list of dependencies in 
 ```elixir
 def deps do
   [
-    {:ex_hls, "~> 0.2.5"}
+    {:ex_hls, "~> 0.2.6"}
   ]
 end
 ```
