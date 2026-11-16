@@ -7,7 +7,6 @@ defmodule ExHLS.Client.Live.Forwarder do
   # is downloading or parsing media playlist or segments.
 
   use GenServer
-  require Logger
   alias ExHLS.Client.Utils
 
   @type t :: pid()
