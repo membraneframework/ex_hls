@@ -10,7 +10,13 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   alias MPEG.TS.Demuxer
 
   @enforce_keys [:demuxer]
-  defstruct @enforce_keys ++ [track_timestamps_data: %{}, last_tden_tag: nil, packets_map: %{}]
+  defstruct @enforce_keys ++
+              [
+                track_timestamps_data: %{},
+                last_tden_tag: nil,
+                packets_map: %{},
+                pending_segment_sequence_numbers: %{}
+              ]
 
   # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
   # generates up to 1/10th of ms error per 26.5 hours of stream which is acceptable in
@@ -20,7 +26,13 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   @type t :: %__MODULE__{
           demuxer: Demuxer.t(),
           last_tden_tag: String.t() | nil,
-          packets_map: %{(track_id :: non_neg_integer()) => Qex.t(MPEG.TS.Demuxer.Container.t())}
+          packets_map: %{
+            (track_id :: non_neg_integer()) =>
+              Qex.t({Demuxer.Container.t(), segment_sequence_number :: non_neg_integer() | nil})
+          },
+          pending_segment_sequence_numbers: %{
+            (track_id :: non_neg_integer()) => non_neg_integer() | nil
+          }
         }
 
   @impl true
@@ -33,15 +45,28 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   end
 
   @impl true
-  def feed!(%__MODULE__{} = demuxing_engine, binary) do
+  def feed!(%__MODULE__{} = demuxing_engine, binary, segment_sequence_number) do
     {new_packets, demuxer} = Demuxer.demux(demuxing_engine.demuxer, binary)
 
-    packets_map =
-      Enum.reduce(new_packets, demuxing_engine.packets_map, fn new_packet, packets_map ->
-        Map.update(packets_map, new_packet.pid, Qex.new([new_packet]), &Qex.push(&1, new_packet))
+    {entries, pending_segment_sequence_numbers} =
+      Enum.map_reduce(new_packets, demuxing_engine.pending_segment_sequence_numbers, fn
+        packet, pending ->
+          {{packet, pending[packet.pid] || segment_sequence_number},
+           Map.put(pending, packet.pid, segment_sequence_number)}
       end)
 
-    %{demuxing_engine | demuxer: demuxer, packets_map: packets_map}
+    packets_map =
+      Enum.reduce(entries, demuxing_engine.packets_map, fn
+        {packet, _segment_sequence_number} = entry, packets_map ->
+          Map.update(packets_map, packet.pid, Qex.new([entry]), &Qex.push(&1, entry))
+      end)
+
+    %{
+      demuxing_engine
+      | demuxer: demuxer,
+        packets_map: packets_map,
+        pending_segment_sequence_numbers: pending_segment_sequence_numbers
+    }
   end
 
   @impl true
@@ -81,7 +106,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
 
   @impl true
   def pop_chunk(%__MODULE__{} = demuxing_engine, track_id) do
-    with {[packet], demuxing_engine} <- take_packets(demuxing_engine, track_id) do
+    with {[{packet, segment_sequence_number}], demuxing_engine} <-
+           take_packets(demuxing_engine, track_id) do
       demuxing_engine = maybe_read_tden_tag(demuxing_engine, packet.payload.pts)
 
       {demuxing_engine, packet} =
@@ -95,7 +121,8 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
         metadata: %{
           discontinuity: packet.payload.discontinuity,
           is_aligned: packet.payload.is_aligned,
-          tden_tag: demuxing_engine.last_tden_tag
+          tden_tag: demuxing_engine.last_tden_tag,
+          hls_segment_number: segment_sequence_number
         }
       }
 
@@ -123,7 +150,9 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
               |> Enum.find(fn {_pid, stream_description} ->
                 stream_description.stream_type == :METADATA_IN_PES
               end),
-          no_id3_data: {[id3], demuxing_engine} <- take_packets(demuxing_engine, id3_track_id),
+          no_id3_data:
+            {[{id3, _segment_sequence_number}], demuxing_engine} <-
+              take_packets(demuxing_engine, id3_track_id),
           id3_not_in_timerange: true <- id3.payload.pts <= packet_pts do
       tden_tag =
         ExHLS.DemuxingEngine.ID3.parse_tden_tag(id3.payload.data) || demuxing_engine.last_tden_tag

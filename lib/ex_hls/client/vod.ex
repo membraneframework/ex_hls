@@ -25,7 +25,8 @@ defmodule ExHLS.Client.VOD do
     :stream_ended_by_media_type,
     :how_much_to_skip_ms,
     :skipped_segments_cumulative_duration_ms,
-    :segment_format
+    :segment_format,
+    :end_segment_sequence_number
   ]
 
   defstruct @enforce_keys
@@ -57,7 +58,10 @@ defmodule ExHLS.Client.VOD do
       stream_ended_by_media_type: %{audio: false, video: false},
       how_much_to_skip_ms: how_much_to_skip_ms,
       skipped_segments_cumulative_duration_ms: nil,
-      segment_format: segment_format
+      segment_format: segment_format,
+      end_segment_sequence_number:
+        media_playlist.info.media_sequence +
+          Enum.count(media_playlist.timeline, &match?(%Segment{}, &1))
     }
     |> skip_segments()
   end
@@ -253,8 +257,13 @@ defmodule ExHLS.Client.VOD do
 
   defp download_chunk(client) do
     case client.media_playlist.timeline do
-      [%{uri: segment_uri} | rest] ->
+      [%{uri: segment_uri} = tag | rest] ->
         client = ensure_demuxing_engine_resolved(client, segment_uri)
+
+        segment_sequence_number =
+          if match?(%Segment{}, tag) do
+            client.end_segment_sequence_number - 1 - Enum.count(rest, &match?(%Segment{}, &1))
+          end
 
         full_segment_uri =
           case URI.parse(segment_uri) do
@@ -266,7 +275,7 @@ defmodule ExHLS.Client.VOD do
 
         demuxing_engine =
           client.demuxing_engine
-          |> client.demuxing_engine_impl.feed!(segment_content)
+          |> client.demuxing_engine_impl.feed!(segment_content, segment_sequence_number)
 
         media_playlist = client.media_playlist |> Map.put(:timeline, rest)
         {:ok, %{client | demuxing_engine: demuxing_engine, media_playlist: media_playlist}}

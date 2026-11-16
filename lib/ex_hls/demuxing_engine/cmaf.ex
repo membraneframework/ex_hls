@@ -22,7 +22,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
   end
 
   @impl true
-  def feed!(%__MODULE__{} = demuxing_engine, binary) do
+  def feed!(%__MODULE__{} = demuxing_engine, binary, segment_sequence_number) do
     {:ok, samples, demuxer} =
       demuxing_engine.demuxer
       |> CMAF.Engine.feed!(binary)
@@ -47,7 +47,7 @@ defmodule ExHLS.DemuxingEngine.CMAF do
             pts_ms: (sample.pts + demuxing_engine.timestamp_offset_ms) |> round(),
             dts_ms: (sample.dts + demuxing_engine.timestamp_offset_ms) |> round(),
             track_id: sample.track_id,
-            metadata: %{tden_tag: last_tden_tag}
+            metadata: %{tden_tag: last_tden_tag, hls_segment_number: segment_sequence_number}
           }
 
           tracks_to_chunks =

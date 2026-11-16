@@ -143,17 +143,13 @@ defmodule ExHLS.Client.Live.Reader do
       |> Enum.with_index(state.media_playlist.info.media_sequence)
       |> Enum.filter(fn {_segment, seq_num} -> seq_num >= download_from_seq_num end)
 
-    {segments_to_download, seq_nums} = segments_to_download_with_seq_nums |> Enum.unzip()
+    state = Enum.reduce(maybe_media_init, state, &download_and_consume_segment(&1, nil, &2))
 
-    state =
-      state
-      |> Map.update!(:max_downloaded_seq_num, fn
-        nil -> seq_nums |> Enum.max(&>=/2, fn -> nil end)
-        number -> [number | seq_nums] |> Enum.max()
-      end)
-
-    (maybe_media_init ++ segments_to_download)
-    |> Enum.reduce(state, &download_and_consume_segment/2)
+    segments_to_download_with_seq_nums
+    |> Enum.reduce(state, fn {segment, seq_num}, state ->
+      state = download_and_consume_segment(segment, seq_num, state)
+      %{state | max_downloaded_seq_num: seq_num}
+    end)
     |> maybe_end_stream()
   end
 
@@ -234,7 +230,7 @@ defmodule ExHLS.Client.Live.Reader do
     state
   end
 
-  defp download_and_consume_segment(segment, state) do
+  defp download_and_consume_segment(segment, segment_sequence_number, state) do
     uri =
       case URI.new!(segment.uri).host do
         nil -> Path.join(state.media_base_url, segment.uri)
@@ -252,18 +248,18 @@ defmodule ExHLS.Client.Live.Reader do
         _other -> state
       end
 
-    consume_segment_content(segment_content, state)
+    consume_segment_content(segment_content, segment_sequence_number, state)
   end
 
-  defp consume_segment_content(segment_content, state) do
-    feed_demuxing_engine(segment_content, state)
+  defp consume_segment_content(segment_content, segment_sequence_number, state) do
+    feed_demuxing_engine(segment_content, segment_sequence_number, state)
     |> maybe_read_and_send_chunks()
   end
 
-  defp feed_demuxing_engine(segment_content, state) do
+  defp feed_demuxing_engine(segment_content, segment_sequence_number, state) do
     demuxing_engine =
       state.demuxing_engine
-      |> state.demuxing_engine_impl.feed!(segment_content)
+      |> state.demuxing_engine_impl.feed!(segment_content, segment_sequence_number)
 
     %{state | demuxing_engine: demuxing_engine}
     |> mark_tracks_as_not_empty()
