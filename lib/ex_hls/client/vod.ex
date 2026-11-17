@@ -93,15 +93,13 @@ defmodule ExHLS.Client.VOD do
 
     media_playlist = client.media_playlist |> Map.put(:timeline, remained_tags)
 
-    skipped_segments_count =
-      Enum.count(client.media_playlist.timeline, &match?(%Segment{}, &1)) -
-        Enum.count(remained_tags, &match?(%Segment{}, &1))
-
     %{
       client
       | media_playlist: media_playlist,
         skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time),
-        next_segment_sequence_number: client.next_segment_sequence_number + skipped_segments_count
+        next_segment_sequence_number:
+          client.next_segment_sequence_number +
+            length(client.media_playlist.timeline) - length(remained_tags)
     }
   end
 
@@ -296,10 +294,8 @@ defmodule ExHLS.Client.VOD do
     end
   end
 
-  defp take_segment_sequence_number(client, %Segment{}) do
-    {client.next_segment_sequence_number,
-     Map.update!(client, :next_segment_sequence_number, &(&1 + 1))}
-  end
+  defp take_segment_sequence_number(client, %Segment{}),
+    do: Map.get_and_update!(client, :next_segment_sequence_number, &{&1, &1 + 1})
 
   defp take_segment_sequence_number(client, _media_init), do: {nil, client}
 
