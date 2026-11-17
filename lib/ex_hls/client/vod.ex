@@ -26,7 +26,7 @@ defmodule ExHLS.Client.VOD do
     :how_much_to_skip_ms,
     :skipped_segments_cumulative_duration_ms,
     :segment_format,
-    :end_segment_sequence_number
+    :next_segment_sequence_number
   ]
 
   defstruct @enforce_keys
@@ -59,9 +59,7 @@ defmodule ExHLS.Client.VOD do
       how_much_to_skip_ms: how_much_to_skip_ms,
       skipped_segments_cumulative_duration_ms: nil,
       segment_format: segment_format,
-      end_segment_sequence_number:
-        media_playlist.info.media_sequence +
-          Enum.count(media_playlist.timeline, &match?(%Segment{}, &1))
+      next_segment_sequence_number: media_playlist.info.media_sequence
     }
     |> skip_segments()
   end
@@ -95,10 +93,15 @@ defmodule ExHLS.Client.VOD do
 
     media_playlist = client.media_playlist |> Map.put(:timeline, remained_tags)
 
+    skipped_segments_count =
+      Enum.count(client.media_playlist.timeline, &match?(%Segment{}, &1)) -
+        Enum.count(remained_tags, &match?(%Segment{}, &1))
+
     %{
       client
       | media_playlist: media_playlist,
-        skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time)
+        skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time),
+        next_segment_sequence_number: client.next_segment_sequence_number + skipped_segments_count
     }
   end
 
@@ -260,10 +263,7 @@ defmodule ExHLS.Client.VOD do
       [%{uri: segment_uri} = tag | rest] ->
         client = ensure_demuxing_engine_resolved(client, segment_uri)
 
-        segment_sequence_number =
-          if match?(%Segment{}, tag) do
-            client.end_segment_sequence_number - 1 - Enum.count(rest, &match?(%Segment{}, &1))
-          end
+        {segment_sequence_number, client} = take_segment_sequence_number(client, tag)
 
         full_segment_uri =
           case URI.parse(segment_uri) do
@@ -295,6 +295,13 @@ defmodule ExHLS.Client.VOD do
         {:error, :no_more_segments, client}
     end
   end
+
+  defp take_segment_sequence_number(client, %Segment{}) do
+    {client.next_segment_sequence_number,
+     Map.update!(client, :next_segment_sequence_number, &(&1 + 1))}
+  end
+
+  defp take_segment_sequence_number(client, _media_init), do: {nil, client}
 
   defp ensure_demuxing_engine_resolved(%{demuxing_engine: nil} = client, segment_uri) do
     demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri, client.segment_format)
