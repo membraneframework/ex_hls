@@ -133,7 +133,12 @@ defmodule ExHLS.Client.Test do
              183, 150, 44, 216, 32, 217, 35, 238, 239, 120, 50, 54, 52, 32, 45, 32, 99, 111, 114,
              101, 32, 49, 54, 52, 32, 114>> <> _rest = video_chunk.payload
 
-    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
+    assert video_chunk.metadata == %{
+             discontinuity: false,
+             is_aligned: false,
+             tden_tag: nil,
+             hls_segment_number: 0
+           }
   end
 
   test "(MPEGTS) stream with ID3v2.4 TDEN tag" do
@@ -241,6 +246,7 @@ defmodule ExHLS.Client.Test do
 
     chunks = Client.generate_stream(client) |> Enum.take(10)
     assert_chunks_are_in_proper_order(chunks)
+    assert hd(chunks).metadata.hls_segment_number == 4
 
     video_chunk = chunks |> Enum.find(&(&1.media_type == :video))
 
@@ -283,7 +289,28 @@ defmodule ExHLS.Client.Test do
              12, 2, 13, 110, 0, 0, 9, 154, 0, 1, 224, 0, 30, 44, 91, 44, 0, 0, 0, 1, 104, 234,
              225, 178, 200, 176, 0, 0>> <> _rest = video_chunk.payload
 
-    assert video_chunk.metadata == %{discontinuity: false, is_aligned: false, tden_tag: nil}
+    assert video_chunk.metadata == %{
+             discontinuity: false,
+             is_aligned: false,
+             tden_tag: nil,
+             hls_segment_number: 2
+           }
+  end
+
+  @tag :tmp_dir
+  test "(fMP4) stream with media sequence greater than 0", %{tmp_dir: tmp_dir} do
+    File.cp_r!(Path.dirname(@fmp4_with_tden_url), tmp_dir)
+    playlist_path = Path.join(tmp_dir, Path.basename(@fmp4_with_tden_url))
+
+    playlist_path
+    |> File.read!()
+    |> String.replace("#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-MEDIA-SEQUENCE:3")
+    |> then(&File.write!(playlist_path, &1))
+
+    chunks = Client.new(playlist_path) |> Client.generate_stream() |> Enum.to_list()
+
+    assert chunks != []
+    assert Enum.all?(chunks, &(&1.metadata.hls_segment_number == 3))
   end
 
   defp assert_chunks_are_in_proper_order(chunks) do

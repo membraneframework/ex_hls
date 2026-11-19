@@ -253,7 +253,7 @@ defmodule ExHLS.Client.VOD do
 
   defp download_chunk(client) do
     case client.media_playlist.timeline do
-      [%{uri: segment_uri} | rest] ->
+      [%{uri: segment_uri} = tag | rest] ->
         client = ensure_demuxing_engine_resolved(client, segment_uri)
 
         full_segment_uri =
@@ -266,7 +266,7 @@ defmodule ExHLS.Client.VOD do
 
         demuxing_engine =
           client.demuxing_engine
-          |> client.demuxing_engine_impl.feed!(segment_content)
+          |> client.demuxing_engine_impl.feed!(segment_content, Map.get(tag, :sequence_number))
 
         media_playlist = client.media_playlist |> Map.put(:timeline, rest)
         {:ok, %{client | demuxing_engine: demuxing_engine, media_playlist: media_playlist}}

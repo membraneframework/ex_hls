@@ -5,7 +5,7 @@ defmodule ExHLS.DemuxingEngine do
 
   @callback new(timestamp_offset_ms :: number()) :: t()
 
-  @callback feed!(t(), binary()) :: t()
+  @callback feed!(t(), binary(), segment_sequence_number :: non_neg_integer() | nil) :: t()
 
   @callback get_tracks_info(t()) :: {:ok, %{optional(integer()) => struct()}} | {:error, any()}
 

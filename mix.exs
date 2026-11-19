@@ -1,7 +1,7 @@
 defmodule ExHLS.Mixfile do
   use Mix.Project
 
-  @version "0.2.6"
+  @version "0.2.7"
   @github_url "https://github.com/membraneframework/ex_hls"
 
   def project do
@@ -38,7 +38,7 @@ defmodule ExHLS.Mixfile do
 
   defp deps do
     [
-      {:ex_m3u8, "~> 0.15.4"},
+      {:ex_m3u8, "~> 0.17.0"},
       {:req, "~> 0.6.1"},
       {:qex, "~> 0.5.1"},
       {:bunch, "~> 1.6"},

@@ -98,6 +98,9 @@ defmodule ExHLS.Client.Live.Reader do
 
   defp maybe_download_chunks(state) do
     cond do
+      not Enum.any?(state.media_playlist.timeline, &match?(%Segment{}, &1)) ->
+        state
+
       state.playing_started? ->
         download_chunks(state)
 
@@ -137,20 +140,9 @@ defmodule ExHLS.Client.Live.Reader do
     download_from_seq_num =
       next_segment_to_download_seq_num(state)
 
-    segments_to_download_with_seq_nums =
+    segments_to_download =
       state.media_playlist.timeline
-      |> Enum.filter(&match?(%Segment{}, &1))
-      |> Enum.with_index(state.media_playlist.info.media_sequence)
-      |> Enum.filter(fn {_segment, seq_num} -> seq_num >= download_from_seq_num end)
-
-    {segments_to_download, seq_nums} = segments_to_download_with_seq_nums |> Enum.unzip()
-
-    state =
-      state
-      |> Map.update!(:max_downloaded_seq_num, fn
-        nil -> seq_nums |> Enum.max(&>=/2, fn -> nil end)
-        number -> [number | seq_nums] |> Enum.max()
-      end)
+      |> Enum.filter(&(match?(%Segment{}, &1) and &1.sequence_number >= download_from_seq_num))
 
     (maybe_media_init ++ segments_to_download)
     |> Enum.reduce(state, &download_and_consume_segment/2)
@@ -174,11 +166,7 @@ defmodule ExHLS.Client.Live.Reader do
   defp next_segment_to_download_seq_num(
          %{max_downloaded_seq_num: nil, live_edge_mode?: true} = state
        ) do
-    how_many_segments =
-      state.media_playlist.timeline
-      |> Enum.count(&match?(%Segment{}, &1))
-
-    state.media_playlist.info.media_sequence + how_many_segments - 1
+    last_segment_seq_num(state)
   end
 
   defp next_segment_to_download_seq_num(
@@ -197,13 +185,13 @@ defmodule ExHLS.Client.Live.Reader do
 
     start_time = duration_sum - 2 * state.media_playlist.info.target_duration
 
-    segment_index =
+    {segment, _segment_end_time} =
       segments_with_end_times
-      |> Enum.find_index(fn {_segment, segment_end_time} ->
+      |> Enum.find(fn {_segment, segment_end_time} ->
         start_time <= segment_end_time
       end)
 
-    segment_index + state.media_playlist.info.media_sequence
+    segment.sequence_number
   end
 
   defp next_segment_to_download_seq_num(%{max_downloaded_seq_num: last_seq_num}) do
@@ -248,22 +236,29 @@ defmodule ExHLS.Client.Live.Reader do
 
     state =
       case segment do
-        %Segment{duration: duration} -> %{state | current_segment_duration: duration}
-        _other -> state
+        %Segment{} ->
+          %{
+            state
+            | current_segment_duration: segment.duration,
+              max_downloaded_seq_num: segment.sequence_number
+          }
+
+        _other ->
+          state
       end
 
-    consume_segment_content(segment_content, state)
+    consume_segment_content(segment_content, Map.get(segment, :sequence_number), state)
   end
 
-  defp consume_segment_content(segment_content, state) do
-    feed_demuxing_engine(segment_content, state)
+  defp consume_segment_content(segment_content, segment_sequence_number, state) do
+    feed_demuxing_engine(segment_content, segment_sequence_number, state)
     |> maybe_read_and_send_chunks()
   end
 
-  defp feed_demuxing_engine(segment_content, state) do
+  defp feed_demuxing_engine(segment_content, segment_sequence_number, state) do
     demuxing_engine =
       state.demuxing_engine
-      |> state.demuxing_engine_impl.feed!(segment_content)
+      |> state.demuxing_engine_impl.feed!(segment_content, segment_sequence_number)
 
     %{state | demuxing_engine: demuxing_engine}
     |> mark_tracks_as_not_empty()
@@ -351,11 +346,10 @@ defmodule ExHLS.Client.Live.Reader do
   end
 
   defp last_segment_seq_num(state) do
-    segments_in_playlist_number =
-      state.media_playlist.timeline
-      |> Enum.count(&match?(%Segment{}, &1))
-
-    state.media_playlist.info.media_sequence + segments_in_playlist_number - 1
+    state.media_playlist.timeline
+    |> Enum.filter(&match?(%Segment{}, &1))
+    |> List.last()
+    |> Map.fetch!(:sequence_number)
   end
 
   defp init_tracks_data(tracks_info, %{tracks_data: nil} = state) do
