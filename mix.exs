@@ -38,7 +38,7 @@ defmodule ExHLS.Mixfile do
 
   defp deps do
     [
-      {:ex_m3u8, github: "membraneframework/ex_m3u8", branch: "segment-sequence-number"},
+      {:ex_m3u8, "~> 0.17.0"},
       {:req, "~> 0.6.1"},
       {:qex, "~> 0.5.1"},
       {:bunch, "~> 1.6"},
