@@ -25,8 +25,7 @@ defmodule ExHLS.Client.VOD do
     :stream_ended_by_media_type,
     :how_much_to_skip_ms,
     :skipped_segments_cumulative_duration_ms,
-    :segment_format,
-    :next_segment_sequence_number
+    :segment_format
   ]
 
   defstruct @enforce_keys
@@ -58,8 +57,7 @@ defmodule ExHLS.Client.VOD do
       stream_ended_by_media_type: %{audio: false, video: false},
       how_much_to_skip_ms: how_much_to_skip_ms,
       skipped_segments_cumulative_duration_ms: nil,
-      segment_format: segment_format,
-      next_segment_sequence_number: media_playlist.info.media_sequence
+      segment_format: segment_format
     }
     |> skip_segments()
   end
@@ -96,10 +94,7 @@ defmodule ExHLS.Client.VOD do
     %{
       client
       | media_playlist: media_playlist,
-        skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time),
-        next_segment_sequence_number:
-          client.next_segment_sequence_number +
-            length(client.media_playlist.timeline) - length(remained_tags)
+        skipped_segments_cumulative_duration_ms: round(max_skipped_segment_end_time)
     }
   end
 
@@ -261,8 +256,6 @@ defmodule ExHLS.Client.VOD do
       [%{uri: segment_uri} = tag | rest] ->
         client = ensure_demuxing_engine_resolved(client, segment_uri)
 
-        {segment_sequence_number, client} = take_segment_sequence_number(client, tag)
-
         full_segment_uri =
           case URI.parse(segment_uri) do
             %URI{host: nil} -> client.media_base_url |> Path.join(segment_uri)
@@ -273,7 +266,7 @@ defmodule ExHLS.Client.VOD do
 
         demuxing_engine =
           client.demuxing_engine
-          |> client.demuxing_engine_impl.feed!(segment_content, segment_sequence_number)
+          |> client.demuxing_engine_impl.feed!(segment_content, Map.get(tag, :sequence_number))
 
         media_playlist = client.media_playlist |> Map.put(:timeline, rest)
         {:ok, %{client | demuxing_engine: demuxing_engine, media_playlist: media_playlist}}
@@ -293,11 +286,6 @@ defmodule ExHLS.Client.VOD do
         {:error, :no_more_segments, client}
     end
   end
-
-  defp take_segment_sequence_number(client, %Segment{}),
-    do: Map.get_and_update!(client, :next_segment_sequence_number, &{&1, &1 + 1})
-
-  defp take_segment_sequence_number(client, _media_init), do: {nil, client}
 
   defp ensure_demuxing_engine_resolved(%{demuxing_engine: nil} = client, segment_uri) do
     demuxing_engine_impl = Utils.resolve_demuxing_engine_impl(segment_uri, client.segment_format)
