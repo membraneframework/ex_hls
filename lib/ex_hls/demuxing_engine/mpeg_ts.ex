@@ -15,7 +15,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
                 track_timestamps_data: %{},
                 last_tden_tag: nil,
                 packets_map: %{},
-                pending_segment_sequence_numbers: %{}
+                unfinished_pes_segment_numbers: %{}
               ]
 
   # using it a boundary expressed in nanoseconds, instead of the usual 90kHz clock ticks,
@@ -30,7 +30,7 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
             (track_id :: non_neg_integer()) =>
               Qex.t({Demuxer.Container.t(), segment_sequence_number :: non_neg_integer() | nil})
           },
-          pending_segment_sequence_numbers: %{
+          unfinished_pes_segment_numbers: %{
             (track_id :: non_neg_integer()) => non_neg_integer() | nil
           }
         }
@@ -48,25 +48,17 @@ defmodule ExHLS.DemuxingEngine.MPEGTS do
   def feed!(%__MODULE__{} = demuxing_engine, binary, segment_sequence_number) do
     {new_packets, demuxer} = Demuxer.demux(demuxing_engine.demuxer, binary)
 
-    {entries, pending_segment_sequence_numbers} =
-      Enum.map_reduce(new_packets, demuxing_engine.pending_segment_sequence_numbers, fn
-        packet, pending ->
-          {{packet, pending[packet.pid] || segment_sequence_number},
-           Map.put(pending, packet.pid, segment_sequence_number)}
-      end)
+    Enum.reduce(new_packets, %{demuxing_engine | demuxer: demuxer}, fn packet, demuxing_engine ->
+      segment_number =
+        demuxing_engine.unfinished_pes_segment_numbers[packet.pid] || segment_sequence_number
 
-    packets_map =
-      Enum.reduce(entries, demuxing_engine.packets_map, fn
-        {packet, _segment_sequence_number} = entry, packets_map ->
-          Map.update(packets_map, packet.pid, Qex.new([entry]), &Qex.push(&1, entry))
-      end)
-
-    %{
       demuxing_engine
-      | demuxer: demuxer,
-        packets_map: packets_map,
-        pending_segment_sequence_numbers: pending_segment_sequence_numbers
-    }
+      |> update_in(
+        [:packets_map, packet.pid],
+        &Qex.push(&1 || Qex.new(), {packet, segment_number})
+      )
+      |> put_in([:unfinished_pes_segment_numbers, packet.pid], segment_sequence_number)
+    end)
   end
 
   @impl true
